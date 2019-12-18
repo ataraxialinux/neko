@@ -1,0 +1,1142 @@
+#!/usr/bin/env bash
+#
+# Copyright (c) 2016-2019 Ataraxia GNU/Linux-Libre <ataraxialinux@protonmail.com>
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+umask 022
+unalias -a
+
+pushd() { command pushd "$1" > /dev/null; }
+popd() { command popd "$1" > /dev/null; }
+
+npk_clean() {
+	if [ -f "/tmp/conflicts" ]; then
+		cat /tmp/conflicts
+		rm -rf /tmp/conflicts
+	fi
+	if [ "$NOCLEAN" != "yes" ]; then
+		rm -rf "$WORK"
+	fi
+	rm -rf "$TMPDIR"
+}
+
+msg() { printf "\033[1;32m ->\033[0m %s\n" "$@"; }
+warn() { printf "\033[1;33m ->\033[0m %s\n" "$@"; }
+die() { printf "\033[1;31m ->\033[0m %s\n" "$@"; npk_clean; exit 1; }
+
+check_root() {
+	if [[ $EUID -ne 0 ]]; then
+		die "You must be root to run 'neko'"
+	fi
+}
+
+find_portdir() {
+	local pkg="$1"
+
+	for myrepos in ${REPOS[@]}; do
+		if [ -d "$myrepos/$pkg" ]; then
+			echo "$myrepos/$pkg"
+			break
+		fi
+	done
+}
+
+find_portver() {
+	local port="$(find_portdir $1)/KagamiBuild"
+	local portver="$(grep ^version $port | sed -e 's/version=//g')"
+	local portrel="$(grep ^release $port | sed -e 's/release=//g')"
+
+	echo "$portver-$portrel"
+}
+
+find_instver() {
+	local instver="$(jq -r '.summary.version' ${ROOTDIR}${DBDIR}/$1/summary.json)"
+	local instrel="$(jq -r '.summary.release' ${ROOTDIR}${DBDIR}/$1/summary.json)"
+
+	echo "$instver-$instrel"
+}
+
+get_filename() {
+	local ABSOLUTE=""
+	if [ "$1" = "-a" ]; then
+		ABSOLUTE=1
+		shift
+	fi
+
+	if [[ $1 =~ ^(http|https|ftp|file)://.*/(.+) ]]; then
+		echo "$SRCDEST/${BASH_REMATCH[2]}"
+	else
+		if [ "$ABSOLUTE" ]; then
+			echo $TOPDIR/$1
+		else
+			echo $1
+		fi
+	fi
+}
+
+source_config() {
+	if [ -f "$CONFIG" ]; then
+		source "$CONFIG"
+	else
+		die "Failed to source the configuration file"
+	fi
+
+	if [ -z "$BARCH" ]; then
+		die "Specify CPU architecture"
+	fi
+}
+
+source_recipe() {
+	unset name version release options backup source noextract
+	unset -f build
+	local MYPORT
+
+	if [ -f "$TOPDIR/KagamiBuild" ]; then
+		MYPORT="$TOPDIR/KagamiBuild"
+	elif [ -f "$TOPDIR/KBUILD" ]; then
+		MYPORT="$TOPDIR/KBUILD"
+	elif [ -f "$TOPDIR/Pkgfile" ]; then
+		MYPORT="$TOPDIR/Pkgfile"
+	else
+		die "Failed to source the package recipe"
+	fi
+
+	source "$MYPORT"
+
+	depends="$(npk-parse $MYPORT "# Depends on:")"
+	conflicts="$(npk-parse $MYPORT "# Conflicts with:")"
+	summary="$(npk-parse $MYPORT "# Description:")"
+	section="$(npk-parse $MYPORT "# Section:")"
+	priority="$(npk-parse $MYPORT "# Priority:")"
+	maintainer="$(npk-parse $MYPORT "# Maintainer:" | sed -e 's/, / /g' | sed -e 's/ at /@/g' | sed -e 's/ dot /./')"
+
+	if [ "$USEBOOTSTRAP" = "yes" ]; then
+		if [ -z "$section" ]; then
+			section="misc"
+		fi
+		if [ -z "$maintainer" ]; then
+			maintainer="bootstrap ataraxialinux@protonmail.com"
+		fi
+		if [ -z data/summary.json ]; then
+			summary="don't have"
+		fi
+	fi
+
+	if [ -z "$name" ]; then
+		die "The name of package is not set"
+	elif [ -z "$version" ]; then
+		die "The version of package is not set"
+	elif [ -z "$release" ]; then
+		die "The release of package is not set"
+	elif [ -z "$maintainer" ]; then
+		die "The maintainer of package is not set"
+	elif [ -z "$section" ]; then
+		die "The section of package is not set"
+	elif [ -z data/summary.json ]; then
+		die "The summary of package is not set"
+	fi
+}
+
+parse_options() {
+	for myopts in ${OPTIONS[@]} ${options[@]}; do
+		case $myopts in
+			emptydirs)
+				OPT_EMPTYDIRS=1
+				;;
+			~emptydirs)
+				OPT_EMPTYDIRS=0
+				;;
+			strip)
+				OPT_STRIP=1
+				;;
+			~strip)
+				OPT_STRIP=0
+				;;
+			makeflags)
+				OPT_MAKEFLAGS=1
+				;;
+			~makeflags)
+				OPT_MAKEFLAGS=0
+				;;
+			locales)
+				OPT_LOCALES=1
+				;;
+			~locales)
+				OPT_LOCALES=0
+				;;
+			docs)
+				OPT_DOCS=1
+				;;
+			~docs)
+				OPT_DOCS=0
+				;;
+			~bootstrap)
+				OPT_BOOTSTRAP=0
+				;;
+			bootstrap)
+				OPT_BOOTSTRAP=1
+				;;
+			~embedded)
+				OPT_EMBEDDED=0
+				;;
+			embedded)
+				OPT_EMBEDDED=1
+				;;
+			~ccache)
+				OPT_CCACHE=0
+				;;
+			ccache)
+				OPT_CCACHE=1
+				;;
+			~libtool)
+				OPT_LIBTOOL=0
+				;;
+			libtool)
+				OPT_LIBTOOL=1
+				;;
+		esac
+	done
+}
+
+download_file() {
+	local url="$1"
+
+	if [ ! "`type -p curl`" ]; then
+		die "curl wasn't found"
+	fi
+
+	msg "Downloading $url"
+
+	LOCAL_FILENAME=`get_filename $FILE`
+	LOCAL_FILENAME_PARTIAL="$LOCAL_FILENAME.partial"
+	cmd="-f --retry 3 --retry-delay 3 -L -o $LOCAL_FILENAME_PARTIAL $CURLOPTS"
+	resumecmd="-C -"
+	fullcmd="curl $cmd"
+	RESUME="no"
+
+	if [ -f "$LOCAL_FILENAME_PARTIAL" ]; then
+		warn "Partial download found, trying to resume"
+		RESUME="yes"
+		fullcmd="$fullcmd $resumecmd"
+	fi
+
+	error=1
+
+	if [ $error != 0 ]; then
+		while true; do
+			$fullcmd $1
+			error=$?
+			if [ $error != 0 ] && [ "$RESUME" = "yes" ]; then
+				warn "Partial download failed, restarting"
+				rm -f "$LOCAL_FILENAME_PARTIAL"
+				RESUME="yes"
+			else
+				break
+			fi
+		done
+	fi
+
+	if [ $error != 0 -o ! -f "$LOCAL_FILENAME_PARTIAL" ]; then
+		die "Downloading '${1}' failed."
+	fi
+
+	mv -f "$LOCAL_FILENAME_PARTIAL" "$LOCAL_FILENAME"
+}
+
+download_source() {
+	local FILE LOCAL_FILENAME
+
+	if [ -n "$source" ]; then
+		for FILE in ${source[@]}; do
+			LOCAL_FILENAME=`get_filename $FILE`
+			if [ ! -e $LOCAL_FILENAME ]; then
+				if [ "$LOCAL_FILENAME" = "$FILE" ]; then
+					die "Source file '$LOCAL_FILENAME' not found (can not be downloaded, URL not specified)."
+				else
+					download_file $FILE
+				fi
+			fi
+		done
+	fi
+}
+
+unpack_source() {
+	if [ "$source" ]; then
+		for FILE in ${source[@]}; do
+			FILENAME="$(basename $FILE)"
+			LOCAL_FILENAME=`get_filename $FILE`
+
+			for NOEXT in ${noextract[@]}; do
+				if [ "$NOEXT" = "$FILENAME" ]; then
+					nxt=1
+					break
+				fi
+			done
+
+			if [ "$FILENAME" != "$FILE" ] && [ "$nxt" != 1 ]; then
+				case $LOCAL_FILENAME in
+					*.tar|*.tar.gz|*.tar.Z|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar.lzma|*.tar.lz|*.tlz|*.tar.lz4|*.tar.zst|*.tar.zstd|*.zip|*.rpm|*.7z)
+						msg "Extacting $FILENAME to the sources directory"
+						bsdtar -p -o -C "$SRC" -xf $LOCAL_FILENAME || die "Failed to extract $FILENAME to the sources directory"
+						;;
+					*)
+						msg "Copying $FILENAME to the sources directory"
+						cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
+						;;
+				esac
+			else
+				msg "Copying $FILENAME to the sources directory"
+				cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
+			fi
+			nxt=
+		done
+	fi
+}
+
+run_strip() {
+	local fs="$1"
+
+	( cd "$fs"
+		find . | xargs file | grep "executable" | grep ELF | cut -f 1 -d : | xargs ${CROSS_COMPILE}strip --strip-all 2>/dev/null
+		find . | xargs file | grep "shared object" | grep ELF | cut -f 1 -d : | xargs ${CROSS_COMPILE}strip --strip-unneeded 2>/dev/null
+		find . | xargs file | grep "current ar archive" | cut -f 1 -d : | xargs ${CROSS_COMPILE}strip --strip-debug 2>/dev/null
+	)
+}
+
+setup_compiler() {
+	if [ -n "$CC" ]; then
+		MYCC="$CC"
+	else
+		MYCC="gcc"
+	fi
+	if [ -n "$CXX" ]; then
+		MYCXX="$CXX"
+	else
+		MYCXX="g++"
+	fi
+}
+
+compile_package() {
+	if [ "$OPT_MAKEFLAGS" != "0" ]; then
+		export MAKEFLAGS="$MKOPTS"
+		export NINJA_OPTIONS="$MKOPTS"
+	else
+		unset MAKEFLAGS NINJA_OPTIONS MKOPTS
+	fi
+
+	if [ "$USE_BOOTSTRAP" != "yes" ]; then
+		if [ "$OPT_CCACHE" != "0" ]; then
+			if type ccache > /dev/null 2>&1; then
+				if [ -n "$CC" ]; then
+					MYCC="ccache $CC"
+				else
+					MYCC="ccache gcc"
+				fi
+				if [ -n "$CXX" ]; then
+					MYCXX="ccache $CXX"
+				else
+					MYCXX="ccache g++"
+				fi
+			else
+				setup_compiler
+			fi
+		else
+			setup_compiler
+		fi
+	fi
+
+	if type build > /dev/null 2>&1; then
+		msg "Compiling package"
+		pushd "$SRC"
+			(
+				set -e
+				export CC="$MYCC"
+				export CXX="$MYCXX"
+				build
+			)
+
+			if [ $? -ne 0 ]; then
+				die  "Failed to compile package: $name"
+			fi
+		popd
+	fi
+
+	pushd "$PKG"
+		msg "Removing junk from package"
+		rm -rf {,usr/}{,local/}{,share/}info usr{,/local}{,/share},opt/*}/info
+		rm -rf {,usr/}{,local/}lib/charset.alias
+
+		find . -name "*.pod" -print0 | xargs -0 rm -rf
+		find . -name ".packlist" -print0 | xargs -0 rm -rf
+
+		if [ "$OPT_LIBTOOL" = "0" ]; then
+			msg "Removing libtool files"
+			find . -name "*.la" -print0 | xargs -0 rm -rf
+		fi
+
+		if [ "$OPT_EMPTYDIRS" = "0" ]; then
+				msg "Removing empty directories"
+				find . -maxdepth 3 -type d -exec rmdir {} + 2>/dev/null
+		fi
+
+		if [ "$OPT_LOCALES" = "0" ]; then
+			msg "Removing locales"
+			rm -rf {,usr/}{,local/}{,share/,lib/}locale
+		fi
+
+		if [ "$OPT_DOCS" = "0" ]; then
+			msg "Removing documentation"
+			rm -rf {,usr/}{,local/}{,share/}doc usr/{,local/}{,share/}{doc,gtk-doc} opt/*/{doc,gtk-doc}
+		fi
+
+		if [ -d "$PKG/usr/share/help" ]; then
+			pushd usr/share/help
+				mv C "$SRC"/
+
+				rm -rf *
+
+				mv "$SRC"/C .
+			popd
+		fi
+
+		if [ "$OPT_STRIP" != "0" ]; then
+			msg "Removing debug information from binary files"
+			run_strip "$PKG"
+		fi
+
+		msg "Compressing manual pages"
+		if [ -d "$PKG/usr/share/man" ]; then
+			(
+				cd "$PKG/usr/share/man"
+				find . -type f -exec pigz -9 '{}' +
+				find . -type l | while read -r file; do
+					ln -sf "$(readlink -- "$file").gz" "${file}.gz"
+					rm "$file"
+				done
+			)
+		fi
+	popd
+}
+
+create_package() {
+	pushd "$PKG"
+		msg "Generating metadata"
+		find $(ls) >> files
+
+		mkdir -p data/
+		if [ -z "$(cat files)" ]; then
+			rm -rf files
+		else
+			mv files data/files
+		fi
+
+		if [ -z "$priority" ]; then
+			priority="optional"
+		fi
+
+		: > data/summary.json
+
+		echo '{' >> data/summary.json
+		echo -e '\t"summary": {' >> data/summary.json
+		echo -e '\t\t"name": "'${name}'",' >> data/summary.json
+		echo -e '\t\t"version": "'${version}'",' >> data/summary.json
+		echo -e '\t\t"release": "'${release}'",' >> data/summary.json
+		echo -e '\t\t"priority": "'${priority}'",' >> data/summary.json
+		echo -e '\t\t"summary": "'${summary}'",' >> data/summary.json
+		echo -e '\t\t"section": "'${section}'",' >> data/summary.json
+		echo -e '\t\t"maintainer": "'${maintainer}'"' >> data/summary.json
+		echo -e '\t}' >> data/summary.json
+		echo '}' >> data/summary.json
+
+		if [ -n "$depends" ]; then
+			for a in $depends; do
+				echo "$a" >> data/depends
+			done
+		fi
+
+		if [ -n "$conflicts" ]; then
+			for a in $conflicts; do
+				echo "$a" >> data/conflicts
+			done
+		fi
+
+		if [ -n "$backup" ]; then
+			for a in ${backup[@]}; do
+				echo "$a" >> data/backup
+			done
+		fi
+
+		if [ -f "$TOPDIR/install" ]; then
+			install -Dm0755 "$TOPDIR/install" data/install
+		fi
+
+		msg "Generating package archive"
+		find . | cpio -H newc -o | xz -9 > "$TARGET"
+
+		if [ $? -ne 0 ]; then
+			die "Failed to create package"
+		fi
+
+		msg "Package was successfuly built"
+	popd
+}
+
+list_subtract() {
+	(
+		cat "$1" "$2" | sort | uniq -u
+		cat "$1"
+	) | sort | uniq -d
+}
+
+list_uninstall() {
+	local f p
+	local files=$(sort -r "$1" | sed 's:^:'"${ROOTDIR}/"': ; s:/^[^\.]\./::g; s:/\{2,\}:/:g; s:/\./:/:g')
+	if [ -z "$DRYRUN" ] ; then
+		echo "$files" | tr '\n' '\0' | xargs -0 rm 2>/dev/null
+		echo "$files" | tr '\n' '\0' | xargs -0 rmdir 2>/dev/null
+		[ "$2" ] && echo "$files" >> "$2"
+	fi
+	return 0
+}
+
+run_backup() {
+	local backup="$1"
+	local action="$2"
+	local mybackup
+
+	if [ -f "$backup" ]; then
+		case $action in
+			save)
+				msg "Saving files for backup"
+				while IFS= read -r mybackup; do
+					if [ -f "$ROOTDIR/$mybackup" ]; then
+						mv "$ROOTDIR/$mybackup" "$ROOTDIR/$mybackup.bak" || die "Failed to save file: ${mybackup}"
+					fi
+				done < "$backup"
+				;;
+			restore)
+				msg "Restoring old files"
+				while IFS= read -r mybackup; do
+					if [ -f "$ROOTDIR/$mybackup.bak" ]; then
+						if [ -f "$ROOTDIR/$mybackup" ]; then
+							mv "$ROOTDIR/$mybackup" "$ROOTDIR/$mybackup.new" || die "Failed to save new file: ${mybackup}"
+						fi
+						mv "$ROOTDIR/$mybackup.bak" "$ROOTDIR/$mybackup" || die "Failed to restore file: ${mybackup}"
+					fi
+				done < "$backup"
+				;;
+		esac
+	fi
+}
+
+run_scripts() {
+	local script="$1"
+	local action="$2"
+
+	if [ -x "$script" ]; then
+		cp "$script" "$ROOTDIR/install"
+		msg "Running $action script"
+		xchroot "${ROOTDIR}/" /install $action
+		rm -rf "$ROOTDIR/install"
+	fi
+}
+
+run_triggers() {
+	local a triggers trigname trigdest trigcmd
+	local pkg="$1"
+
+	if [ "$NOTRIGGERS" != "yes" ]; then
+		if [ -d "${ROOTDIR}${TGDIR}" ]; then
+			if [ -n "$(ls ${ROOTDIR}${TGDIR})" ]; then
+				for triggers in "${ROOTDIR}${TGDIR}/"*; do
+					trigname="$(jq -r '.trigger.name' $triggers)"
+					trigdest="$(jq -r '.trigger.directory[]' $triggers)"
+					trigcmd="$(jq -r '.trigger.command' $triggers)"
+
+					if [ -n "$trigname" ] && [ -n "$trigdest" ]; then
+						for a in $trigdest; do
+							if [ -f "${ROOTDIR}${DBDIR}/$pkg/files" ]; then
+								grep -q -F "$trigdest" "${ROOTDIR}${DBDIR}/$pkg/files"  && {
+									if [ -n "$trigcmd" ]; then
+										msg "Running triggers: $trigname"
+										xchroot "${ROOTDIR}/" $trigcmd
+									fi
+								}
+							fi
+						done
+					fi
+				done
+			fi
+		fi
+	fi
+}
+
+npk_build() {
+	source_recipe
+
+	if [ -z "$PKGDEST" ]; then
+		PKGDEST="$TOPDIR"
+	fi
+	if [ -z "$SRCDEST" ]; then
+		SRCDEST="$TOPDIR"
+	fi
+
+	TARGET="$PKGDEST/${name}#${version}+${release}.${BARCH}.xz"
+
+	if [ "$FORCE" = "yes" ]; then
+		rm -rf "$TARGET"
+	fi
+
+	if [ ! -f "$TARGET" ]; then
+		msg "Building package: $name"
+		WORK="$PWD/work"
+		PKG="$WORK/pkg"
+		SRC="$WORK/src"
+
+		rm -rf "$WORK"
+		mkdir -p "$PKG" "$SRC"
+
+		parse_options
+
+		if [ "$USEBOOTSTRAP" = "yes" ]; then
+			if [ -z "$OPT_BOOTSTRAP" ]; then
+				die "This package couldn't be built in the cross environment"
+			elif [ "$OPT_BOOTSTRAP" = "0" ]; then
+				die "This package couldn't be built in the cross environment"
+			fi
+		fi
+
+		if [ "$OPT_EMBEDDED" = "1" ]; then
+			EMBEDDED=1
+		else
+			EMBEDDED=0
+		fi
+
+		if [ "$NODOWNLOAD" != "yes" ]; then
+			download_source
+		fi
+
+		if [ "$NOEXTRACT" != "yes" ]; then
+			unpack_source
+		fi
+
+		if [ "$NOBUILD" != "yes" ]; then
+			compile_package
+		fi
+
+		if [ "$NOPACKAGE" != "yes" ]; then
+			create_package
+			if [ "$NOCLEAN" != "yes" ]; then
+				rm -rf "$WORK"
+			fi
+		else
+			if [ "$NOCLEAN" != "yes" ]; then
+				rm -rf "$WORK"
+			fi
+		fi
+	fi
+}
+
+npk_install() {
+	if [ -n "$TARGET" ]; then
+		local pkg="$TARGET"
+	else
+		local pkg="$1"
+	fi
+
+	if [ ! -f "$pkg" ]; then
+		die "Your package file was not found or not specified"
+	fi
+	if [ "${pkg##*.}" != "xz" ]; then
+		die "This file does not end in .xz"
+	fi
+
+	if [ -z "$(openbsd-tar -tJf $pkg 2>/dev/null | grep -oh 'data/summary.json')" ]; then
+		die "It is not a neko package"
+	fi
+
+	if [ ! -z "$ROOTDIR" ] && [ ! -d "$ROOTDIR" ]; then
+		mkdir -p "$ROOTDIR"
+	fi
+
+	TMPDIR="$(mktemp -d)" || die "Couldn't create a temporary directory"
+	openbsd-tar -C "$TMPDIR" -xJf "$pkg" data
+
+	local localname="$(jq -r '.summary.name' $TMPDIR/data/summary.json)"
+	local localver="$(jq -r '.summary.version' $TMPDIR/data/summary.json)"
+	local localrel="$(jq -r '.summary.release' $TMPDIR/data/summary.json)"
+
+	if [ -z "$localname" ]; then
+		die "Your package is broken"
+	fi
+
+	if [ -f "${ROOTDIR}${DBDIR}/$localname/summary.json" ]; then
+		if [ "$NEEDED" = "yes" ]; then
+			warn "$localname: This package has been already installed"
+			return 0
+		else
+			msg "Updating package: $localname"
+			local update="true"
+		fi
+	else
+		msg "Installing package: $localname"
+		local update="false"
+	fi
+
+	trap "" INT
+
+	if [ "$FORCE" != "yes" ] && [ "$update" != "true" ]; then
+		msg "Checking for file conflicts"
+		if [ ! -f "${ROOTDIR}${DBDIR}/$localname/summary.json" ]; then
+			for fileconflicts in $(bsdtar -tf "$pkg" | sed -e 's,\./,,g'); do
+				if [ -f "$ROOTDIR/$fileconflicts" ]; then
+					echo "$fileconflicts" >> /tmp/conflicts
+				fi
+			done
+			if [ -f "/tmp/conflicts" ]; then
+				die "Following files couldn't be overwritten"
+			fi
+		fi
+	fi
+
+	if [ "$NODEPENDS" != "yes" ]; then
+		if [ -f "$TMPDIR/data/depends" ]; then
+			while IFS= read -r deps; do
+	  			if [ ! -f "${ROOTDIR}${DBDIR}/$deps/summary.json" ]; then
+					die "This package depends on $deps"
+				fi
+			done < "$TMPDIR/data/depends"
+		fi
+	fi
+	if [ "$NOCONFLICTS" != "yes" ]; then
+		if [ -f "$TMPDIR/data/conflicts" ]; then
+			while IFS= read -r conflicts; do
+	  			if [ -f "${ROOTDIR}${DBDIR}/$conflicts/summary.json" ]; then
+					die "This package conflicts with $conflicts"
+				fi
+			done < "$TMPDIR/data/conflicts"
+		fi
+	fi
+
+	if [ "$NOSCRIPTS" != "yes" ]; then
+		if [ -f "$TMPDIR/data/install" ]; then
+			run_scripts "$TMPDIR/data/install" pre-install
+		fi
+	fi
+	if [ "$NOBACKUP" != "yes" ]; then
+		if [ -f "$TMPDIR/data/backup" ]; then
+			run_backup "$TMPDIR/data/backup" save
+		fi
+	fi
+
+	msg "Extracting package"
+	openbsd-tar -C "${ROOTDIR}/" -xJf "$pkg" 1>/dev/null || die "Failed to install package contents"
+	rm -rf "$ROOTDIR/data"
+
+	if [ "$NOBACKUP" != "yes" ]; then
+		if [ -f "$TMPDIR/data/backup" ]; then
+			run_backup "$TMPDIR/data/backup" restore
+		fi
+	fi
+
+	if [ "$NOSCRIPTS" != "yes" ]; then
+		if [ -f "$TMPDIR/data/install" ]; then
+			run_scripts "$TMPDIR/data/install" post-install
+		fi
+	fi
+
+	msg "Installing package info"
+	if [ "$update" = "true" ]; then
+		rm -rf "${ROOTDIR}${DBDIR}/$localname"
+		mkdir -p "${ROOTDIR}${DBDIR}/$localname"
+	else
+		mkdir -p "${ROOTDIR}${DBDIR}/$localname"
+	fi
+
+	for files in summary.json files backup install depends conflicts; do
+		if [ -f "$TMPDIR/data/$files" ]; then
+			cp "$TMPDIR/data/$files" "${ROOTDIR}${DBDIR}/$localname/$files"
+		fi
+	done
+
+	run_triggers $localname
+
+	rm -rf "$TMPDIR" "$ROOTDIR/data" /tmp/conflicts "$ROOTDIR/install"
+	msg "Package was successfully installed"
+
+	trap INT
+}
+
+npk_remove() {
+	local pkg="$1"
+
+	if [ -z "$pkg" ]; then
+		die "Your package was not specified"
+	fi
+
+	if [ ! -f "${ROOTDIR}${DBDIR}/$pkg/summary.json" ]; then
+		die "Your package is not installed"
+	fi
+
+	local localname="$(jq -r '.summary.name' ${ROOTDIR}${DBDIR}/$pkg/summary.json)"
+	local localpriority="$(jq -r '.summary.priority' ${ROOTDIR}${DBDIR}/$pkg/summary.json)"
+
+	if [ -z "$localname" ]; then
+		die "Your package is broken"
+	fi
+
+	if [ "$localpriority" = "required" ] && [ "$FORCE" != "yes" ]; then
+		die "Can not remove system required package"
+	fi
+
+	msg "Removing package: $localname"
+
+	trap "" INT
+
+	if [ "$NOSCRIPTS" != "yes" ]; then
+		if [ -x "${ROOTDIR}${DBDIR}/$localname/install" ]; then
+			run_scripts "${ROOTDIR}${DBDIR}/$localname/install" pre-remove
+		fi
+	fi
+
+	if [ "$NOBACKUP" != "yes" ]; then
+		if [ -f "${ROOTDIR}${DBDIR}/$localname/backup" ]; then
+			run_backup"${ROOTDIR}${DBDIR}/$localname/backup" save
+		fi
+	fi
+
+	if [ -f "${ROOTDIR}${DBDIR}/$localname/files" ]; then
+		msg "Removing files"
+		local dirlist=`grep '/$' "${ROOTDIR}${DBDIR}/$localname/files"`
+		local nondir=`grep -v '/$' "${ROOTDIR}${DBDIR}/$localname/files"`
+		list_uninstall "${ROOTDIR}${DBDIR}/$localname/files"
+		if [ $? -gt 1 ]; then
+			die "Failed to remove package"
+		fi
+	fi
+
+	if [ "$NOBACKUP" != "yes" ]; then
+		if [ -f "${ROOTDIR}${DBDIR}/$localname/backup" ]; then
+			run_backup "${ROOTDIR}${DBDIR}/$localname/backup" restore
+		fi
+	fi
+
+	if [ "$NOSCRIPTS" != "yes" ]; then
+		if [ -x "${ROOTDIR}${DBDIR}/$localname/install" ]; then
+			run_scripts "${ROOTDIR}${DBDIR}/$localname/install" post-remove
+		fi
+	fi
+
+	msg "Removing package info"
+	rm -rf "${ROOTDIR}${DBDIR}/$localname"
+
+	msg "Package was successfully removed"
+
+	trap INT
+}
+
+npk_emerge() {
+	local pkg="$1"
+
+	pushd "$(find_portdir $pkg)"
+		export TOPDIR="$PWD"
+		source_recipe
+
+		if [ "$NOCONFLICTS" != "yes" ]; then
+			if [ -n "$conflicts" ]; then
+				for myconflicts in $conflicts; do
+	  				if [ -f "${ROOTDIR}${DBDIR}/$myconflicts/summary.json" ]; then
+						"This package conflicts with $myconflicts"
+					fi
+				done
+			fi
+		fi
+		if [ "$NODEPENDS" != "yes" ]; then
+			if [ -n "$depends" ]; then
+				(
+					for mydepends in $depends; do
+	  					if [ ! -f "${ROOTDIR}${DBDIR}/$mydepends/summary.json" ]; then
+							npk_emerge $mydepends
+						fi
+					done
+				)
+				if [ $? != 0 ]; then
+					exit 1
+				fi
+			fi
+		fi
+
+		port="$(find_portdir $pkg)/KagamiBuild" \
+			source_recipe
+		npk_build
+		if [ "$PACKAGE" != "no" ]; then
+			if [ ! -f "$TARGET" ]; then
+				die "Package file wasn't found"
+			fi
+			npk_install
+		fi
+	popd
+}
+
+npk_upgrade() {
+	unset FORCE NEEDED
+
+	FORCE="yes"
+	NEEDED="no"
+
+	msg "Checking for updates"
+	rm -rf /tmp/updates
+
+	for pkg in "${ROOTDIR}${DBDIR}/"*; do
+		if [ "$(find_instver $(basename $pkg))" != "$(find_portver $(basename $pkg))" ]; then
+			echo "$(basename $pkg)" >> /tmp/updates
+		fi
+	done
+
+	if [ ! -f "/tmp/updates" ]; then
+		warn "No updates were found"
+		exit 0
+	fi
+
+	msg "Following packages will be updated"
+	for updated in $(cat /tmp/updates); do
+		msg "$updated"
+	done
+
+	(
+		for updated in $(cat /tmp/updates); do
+			npk_emerge $updated
+		done
+	)
+	if [ $? != 0 ]; then
+		die "Failed to updated system"
+	fi
+
+	rm -rf /tmp/updates
+	msg "System was updated successfuly!"
+}
+
+
+
+npk_version() {
+	printf "%s\n" \
+		"neko version $VERSION" \
+		"" \
+		"Copyright (c) 2016-2019 Ataraxia Linux" \
+		"" \
+		"This software is licensed under ISC license." \
+		"For further information: https://www.isc.org/licenses/" \
+		""
+	exit 0
+}
+
+npk_usage() {
+	printf "%s\n" \
+		"neko - Next-generation package and configuration manager for Ataraxia Linux" \
+		"" \
+		"Usage: neko [ACTION] [OPTION...] [FILE...]" \
+		"" \
+		"Operations:" \
+		"   install	Compile and install packages or install binary (.tgz) file" \
+		"   build	Compile package from recipe" \
+		"   remove	Remove package from system" \
+		"   upgrade	Perform system upgrade" \
+		"   version	Show version of neko" \
+		"   help		Show usage information" \
+		"   -c <FILE>	Specify configuration file for neko" \
+		"   -r <DIR>	Specify directory for installing packages" \
+		"   -f		Do force installation/build/removal" \
+		"" \
+		"Options for installing and removing packages:" \
+		"   -n		Don't reinstall package" \
+		"   -b		Don't backup or restore packages" \
+		"   -d		Don't check for dependencies" \
+		"   -e		Don't check for conflicts" \
+		"   -s		Don't run scripts" \
+		"   -t		Don't run triggers" \
+		"" \
+		"Options for installing and building packages:" \
+		"   -C		Don't perform cleanup" \
+		"   -D		Don't download source" \
+		"   -E		Don't extract sources" \
+		"   -B		Don't build package" \
+		"   -P		Don't create package" \
+		"" \
+		"BUG TRACKER: https://github.com/ataraxialinux/neko/issues" \
+		""
+	exit 0
+}
+
+readonly VERSION="MAINVER"
+readonly DBDIR="/var/lib/neko"
+readonly TGDIR="/var/lib/neko-triggers"
+
+TOPDIR="$PWD"
+CONFIG="/etc/neko.config"
+OPTIONS=('emptydirs' 'strip' 'makeflags' 'locales' 'docs' 'ccache' 'libtool' '~bootstrap' '~embedded')
+
+USEBOOTSTRAP=no
+NOCLEAN=no
+NODOWNLOAD=no
+NOEXTRACT=no
+NOBUILD=no
+NOPACKAGE=no
+NEEDED=no
+FORCE=no
+NODEPENDS=no
+NOCONFLICTS=no
+NOSCRIPTS=no
+NOTRIGGERS=no
+NOBACKUP=no
+
+case $1 in
+	build|install|remove)
+		mode="$1"
+
+		shift
+		while getopts :fndebstWCDEBPc:r: opts; do
+			case $opts in
+				c)
+					CONFIG="$OPTARG"
+					;;
+				r)
+					ROOTDIR="$OPTARG"
+					;;
+				f)
+					FORCE=yes
+					;;
+				n)
+					NEEDED=yes
+					;;
+				d)
+					NODEPENDS=yes
+					;;
+				e)
+					NOCONFLICTS=yes
+					;;
+				b)
+					NOBACKUP=yes
+					;;
+				s)
+					NOSCRIPTS=yes
+					;;
+				t)
+					NOTRIGGERS=yes
+					;;
+				W)
+					USEBOOTSTRAP=yes
+					;;
+				C)
+					NOCLEAN=yes
+					;;
+				D)
+					NODOWNLOAD=yes
+					;;
+				E)
+					NOEXTRACT=yes
+					;;
+				B)
+					NOBUILD=yes
+					;;
+				P)
+					NOPACKAGE=yes
+					;;
+				:)
+					die "Option '-${OPTARG}' needs an argument"
+					;;
+				\?)
+					die "Option '-${OPTARG}' is illegal"
+					;;
+			esac
+		done
+		case $mode in
+			install|remove)
+				if [ "$#" -eq 0 ]; then
+					die "Specify options. To list available options use: neko help"
+				fi
+				;;
+		esac
+		shift $((OPTIND - 1))
+
+		check_root
+		source_config
+
+		if [ -n "$ROOTDIR" ]; then
+			ROOTDIR="$(realpath $ROOTDIR)"
+			ROOTDIR="${ROOTDIR%/}"
+		fi
+
+		case $mode in
+			install)
+				for mypkgs in "$@"; do
+					case $mypkgs in
+						*.npk)
+							npk_install $mypkgs
+							;;
+						*)
+							npk_emerge $mypkgs
+							;;
+					esac
+				done
+				;;
+			remove)
+				for mypkgs in "$@"; do
+					npk_remove $mypkgs
+				done
+				;;
+			build)
+				npk_build
+				;;
+		esac
+		;;
+	upgrade)
+		shift
+		while getopts c:r: opts; do
+			case $opts in
+				c)
+					CONFIG="$OPTARG"
+					;;
+				r)
+					ROOTDIR="$OPTARG"
+					;;
+				:)
+					die "Option '-${OPTARG}' needs an argument"
+					;;
+				\?)
+					die "Option '-${OPTARG}' is illegal"
+					;;
+			esac
+		done
+		shift $((OPTIND - 1))
+
+		check_root
+		source_config
+
+		if [ -n "$ROOTDIR" ]; then
+			ROOTDIR="$(realpath $ROOTDIR)"
+			ROOTDIR="${ROOTDIR%/}"
+		fi
+
+		npk_upgrade
+		;;
+	version)
+		npk_version
+		;;
+	help|*)
+		npk_usage
+		;;
+esac
+
+exit 0
+
