@@ -699,7 +699,7 @@ npk_install() {
 	if [ "$FORCE" != "yes" ] && [ "$update" != "true" ]; then
 		msg "Checking for file conflicts"
 		if [ ! -f "${ROOTDIR}${DBDIR}/$localname/summary.json" ]; then
-			for fileconflicts in $(bsdtar -tf "$pkg" | sed -e 's,\./,,g'); do
+			for fileconflicts in $(openbsd-tar -tJf "$pkg" | sed -e 's,\./,,g'); do
 				if [ -f "$ROOTDIR/$fileconflicts" ]; then
 					echo "$fileconflicts" >> /tmp/conflicts
 				fi
@@ -741,7 +741,14 @@ npk_install() {
 	fi
 
 	msg "Extracting package"
-	openbsd-tar -C "${ROOTDIR}/" -xJf "$pkg" 1>/dev/null || die "Failed to install package contents"
+	(
+		pushd "${ROOTDIR}/"
+			xz -d < "$pkg" | cpio -i
+		popd
+	)
+	if [ $? -ne 0 ]; then
+		die "Failed to extract package"
+	fi
 	rm -rf "$ROOTDIR/data"
 
 	if [ "$NOBACKUP" != "yes" ]; then
