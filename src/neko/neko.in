@@ -840,8 +840,8 @@ main() {
 		search|sr) shift; mode="npk_search" ;;
 		sync|sy) shift; mode="npk_sync" ;;
 		upgrade|up) shift; mode="npk_upgrade" ;;
-		version) version ;;
-		*|help) usage ;;
+		version) npk_version ;;
+		*|help) npk_usage ;;
 	esac
 
 	while getopts :fwndestCDEBPc:m:r: opts; do
