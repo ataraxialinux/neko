@@ -1,5 +1,5 @@
 AC_PREREQ([2.64])
-AC_INIT([neko], [0.98], [ataraxialinux@protonmail.com])
+AC_INIT([neko], [0.99], [ataraxialinux@protonmail.com])
 AC_CONFIG_AUX_DIR(aux-dist)
 AM_INIT_AUTOMAKE
 AM_SANITY_CHECK
@@ -17,6 +17,6 @@ CFLAGS="-fPIC"
 
 AC_CHECK_HEADERS(string.h)
 
-AC_CONFIG_FILES([Makefile src/Makefile src/libopenbsd/Makefile src/libneko/Makefile src/libdewey/Makefile src/wrappers/Makefile src/vercmp/Makefile src/xchroot/Makefile src/pax/Makefile src/neko/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/libopenbsd/Makefile src/libneko/Makefile src/libdewey/Makefile src/wrappers/Makefile src/vercmp/Makefile src/xchroot/Makefile src/neko/Makefile])
 
 AC_OUTPUT
