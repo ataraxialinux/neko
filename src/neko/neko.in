@@ -740,7 +740,6 @@ npk_upgrade() {
 
 	msg "Following packages will be updated"
 	for updated in $(cat /tmp/updates); do
-		msg "$updated"
 		printf "[\e[0;32mUP\e[0m] $updated "
 	done
 	echo; echo
