@@ -510,6 +510,8 @@ npk_build() {
 
 	if [ ! -f "$TARGET" ]; then
 		msg "Building package: $name"
+		echo -n "\033]0;Compiling package: $name\007"
+
 		WORK="$PWD/work"
 		PKG="$WORK/pkg"
 		SRC="$WORK/src"
