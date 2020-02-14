@@ -236,14 +236,22 @@ unpack_source() {
 						msg "Extacting $FILENAME to the sources directory"
 						bsdtar -p -o -C "$SRC" -xf $LOCAL_FILENAME || die "Failed to extract $FILENAME to the sources directory"
 						;;
+					*.git)
+						true ;;
 					*)
 						msg "Copying $FILENAME to the sources directory"
 						cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
 						;;
 				esac
 			else
-				msg "Copying $FILENAME to the sources directory"
-				cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
+				case $LOCAL_FILENAME in
+					*.git)
+						true ;;
+					*)
+						msg "Copying $FILENAME to the sources directory"
+						cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
+						;;
+				esac
 			fi
 			nxt=
 		done
@@ -779,10 +787,11 @@ npk_usage() {
 		"Usage: neko [ACTION] [OPTION...] [FILE...]" \
 		"" \
 		"Operations:" \
-		"   install	Compile and install packages or install binary (.tgz) file" \
-		"   build	Compile package from recipe" \
-		"   remove	Remove package from system" \
-		"   upgrade	Perform system upgrade" \
+		"   build/bi	Compile package from recipe" \
+		"   emerge/em	Compile and install package file" \
+		"   install/in	Install binary package (.rpm) file" \
+		"   remove/rm	Remove package from system" \
+		"   upgrade/up	Perform system upgrade" \
 		"   version	Show version of neko" \
 		"   help		Show usage information" \
 		"   -c <FILE>	Specify configuration file for neko" \
