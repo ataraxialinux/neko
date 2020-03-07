@@ -71,7 +71,7 @@ static int	 fts_safe_changedir(FTS *, FTSENT *, int, char *);
 #define	BNAMES		2		/* fts_children, names only */
 #define	BREAD		3		/* fts_read */
 
-#ifdef __GLIBC__
+#ifndef __GLIBC__
 typedef intptr_t uintptr_t;
 #endif
 
