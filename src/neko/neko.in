@@ -486,6 +486,7 @@ create_package() {
 			--define "%_binary_filedigest_algorithm 8" \
 			--define "%_pkgverify_level digest" \
 			--define "%_minimize_writes 0" \
+			--define "%_build_id_links compat none" \
 			--target $BARCH \
 			--buildroot="$PKG" \
 			--clean \
