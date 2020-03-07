@@ -738,7 +738,7 @@ npk_upgrade() {
 	rm -rf /tmp/updates
 
 	for pkg in $(rpm -qa --queryformat='%{NAME}\n' $rootopt --dbpath /var/lib/rpm | sort -n); do
-		vercmp "$(find_instver $(basename $pkg))" "$(find_portver $(basename $pkg)"
+		vercmp "$(find_instver $(basename $pkg))" "$(find_portver $(basename $pkg))"
 		if [ $? = 255 ]; then
 			echo "$(basename $pkg)" >> /tmp/updates
 		fi
