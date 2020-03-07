@@ -71,10 +71,6 @@ static int	 fts_safe_changedir(FTS *, FTSENT *, int, char *);
 #define	BNAMES		2		/* fts_children, names only */
 #define	BREAD		3		/* fts_read */
 
-#ifndef __GLIBC__
-typedef intptr_t uintptr_t;
-#endif
-
 #define ALIGNBYTES (sizeof(uintptr_t) - 1)
 #define ALIGN(p) (((uintptr_t)(p) + ALIGNBYTES) &~ ALIGNBYTES)
 
