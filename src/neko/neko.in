@@ -233,7 +233,7 @@ unpack_source() {
 			if [ "$FILENAME" != "$FILE" ] && [ "$nxt" != 1 ]; then
 				case $LOCAL_FILENAME in
 					*.tar|*.tar.gz|*.tar.Z|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar.lzma|*.tar.lz|*.tlz|*.tar.lz4|*.tar.zst|*.tar.zstd|*.zip|*.rpm|*.7z)
-						msg "Extacting $FILENAME to the sources directory"
+						msg "Extracting $FILENAME to the sources directory"
 						bsdtar -p -o -C "$SRC" -xf $LOCAL_FILENAME || die "Failed to extract $FILENAME to the sources directory"
 						;;
 					*.git)
