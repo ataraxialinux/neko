@@ -193,7 +193,7 @@ download_file() {
 }
 
 download_source() {
-	local FILE LOCAL_FILENAME tgt
+	local FILE LOCAL_FILENAME tgt cursum newsum checkresult
 
 	if [ -n "$source" ]; then
 		for FILE in ${source[@]}; do
@@ -222,6 +222,18 @@ unpack_source() {
 		for FILE in ${source[@]}; do
 			FILENAME="$(basename $FILE)"
 			LOCAL_FILENAME=`get_filename $FILE`
+
+			if [ "$nosums" != "yes" ] && [ -f "$topdir/sums" ]; then
+				echo -en "\e[34m::\033[0m Checking source integrity for $FILENAME"
+				cursum="$(cat $topdir/sums | grep $FILENAME | awk '{print $1}')"
+				newsum="$(b2sum $LOCAL_FILENAME | awk '{print $1}')"
+				if [ "$cursum" != "$newsum" ]; then
+					echo -e "\e[31m FAIL\033[0m"
+					exit 1
+				else
+					echo -e "\e[32m SUCCESS\033[0m"
+				fi
+			fi
 
 			for NOEXT in ${noextract[@]}; do
 				if [ "$NOEXT" = "$FILENAME" ]; then
@@ -738,7 +750,7 @@ npk_upgrade() {
 	rm -rf /tmp/updates
 
 	for pkg in $(rpm -qa --queryformat='%{NAME}\n' $rootopt --dbpath /var/lib/rpm | sort -n); do
-		vercmp "$(find_instver $(basename $pkg))" "$(find_portver $(basename $pkg)"
+		vercmp "$(find_instver $(basename $pkg))" "$(find_portver $(basename $pkg))"
 		if [ $? = 255 ]; then
 			echo "$(basename $pkg)" >> /tmp/updates
 		fi
@@ -814,6 +826,7 @@ npk_usage() {
 		"   -E		Don't extract sources" \
 		"   -B		Don't build package" \
 		"   -P		Don't create package" \
+		"   -S		Don't perform source integrity checks" \
 		"" \
 		"BUG TRACKER: https://github.com/ataraxialinux/neko/issues" \
 		""
@@ -841,6 +854,7 @@ main() {
 	noextract="no"
 	nobuild="no"
 	nopackage="no"
+	nosums="no"
 
 	case $1 in
 		build|bi) shift; mode="npk_build" ;;
@@ -856,7 +870,7 @@ main() {
 		*|help) npk_usage ;;
 	esac
 
-	while getopts :fwndestCDEBPc:m:r: opts; do
+	while getopts :fwndestCDEBPSc:m:r: opts; do
 		case $opts in
 			c) config="$(realpath $OPTARG)" ;;
 			m) macros="$(realpath $OPTARG)" ;;
@@ -873,6 +887,7 @@ main() {
 			E) noextract="yes" ;;
 			B) nobuild="yes" ;;
 			P) nopackage="yes" ;;
+			S) nosums="yes" ;;
 		esac
 	done
 	shift $((OPTIND - 1))
