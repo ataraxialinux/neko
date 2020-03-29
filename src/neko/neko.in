@@ -234,6 +234,11 @@ unpack_source() {
 					echo -e "\e[32m SUCCESS\033[0m"
 				fi
 			fi
+		done
+
+		for FILE in ${source[@]}; do
+			FILENAME="$(basename $FILE)"
+			LOCAL_FILENAME=`get_filename $FILE`
 
 			for NOEXT in ${noextract[@]}; do
 				if [ "$NOEXT" = "$FILENAME" ]; then
