@@ -782,7 +782,7 @@ npk_upgrade() {
 	)
 	if [ $? != 0 ]; then
 		rm -rf /tmp/updates
-		die "Failed to updated system"
+		die "Failed to update your system"
 	fi
 
 	rm -rf /tmp/updates
