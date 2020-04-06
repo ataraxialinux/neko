@@ -77,9 +77,9 @@ source_config() {
 }
 
 source_recipe() {
-	unset name version release options backup source noextract
+	unset name version release options backup source noextract depends
 	unset -f build
-	local myport
+	local myport fakedep
 
 	if [ -f "$topdir/KagamiBuild" ]; then
 		myport="$topdir/KagamiBuild"
@@ -92,6 +92,9 @@ source_recipe() {
 	source "$myport"
 
 	depends="$(npk-parse $myport "# Depends on:")"
+	if [ ! -z "$(npk-parse $myport "# Dep $BARCH:")" ]; then
+		depends="$depends $(npk-parse $myport "# Dep $BARCH:")"
+	fi
 	conflicts="$(npk-parse $myport "# Conflicts with:")"
 	provides="$(npk-parse $myport "# Provides:")"
 	obsoletes="$(npk-parse $myport "# obsoletes:")"
