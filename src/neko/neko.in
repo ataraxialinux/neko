@@ -223,9 +223,9 @@ unpack_source() {
 			FILENAME="$(basename $FILE)"
 			LOCAL_FILENAME=`get_filename $FILE`
 
-			if [ "$nosums" != "yes" ] && [ -f "$topdir/sums" ]; then
+			if [ "$nosums" != "yes" ] && [ -f "$topdir/.hashsums" ]; then
 				echo -en "\e[34m::\033[0m Checking source integrity for $FILENAME"
-				cursum="$(cat $topdir/sums | grep $FILENAME | awk '{print $1}')"
+				cursum="$(cat $topdir/.hashsums | grep $FILENAME | awk '{print $1}')"
 				newsum="$(b2sum $LOCAL_FILENAME | awk '{print $1}')"
 				if [ "$cursum" != "$newsum" ]; then
 					echo -e "\e[31m FAIL\033[0m"
@@ -307,15 +307,15 @@ compile_package() {
 	if [ "$bootstrap" != "yes" ]; then
 		if [ "$opt_ccache" != "0" ]; then
 			if type ccache > /dev/null 2>&1; then
-				if [ -n "$CC" ]; then
-					MYCC="ccache $CC"
+				if [ -f "/usr/lib/ccache/bin/${CC}" ]; then
+					MYCC="/usr/lib/ccache/bin/${CC}"
 				else
-					MYCC="ccache gcc"
+					MYCC="/usr/lib/ccache/bin/gcc"
 				fi
-				if [ -n "$CXX" ]; then
-					MYCXX="ccache $CXX"
+				if [ -f "/usr/lib/ccache/bin/${CXX}" ]; then
+					MYCXX="/usr/lib/ccache/bin/${CXX}"
 				else
-					MYCXX="ccache g++"
+					MYCXX="/usr/lib/ccache/bin/g++"
 				fi
 			else
 				setup_compiler
