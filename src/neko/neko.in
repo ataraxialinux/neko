@@ -60,8 +60,8 @@ find_portver() {
 }
 
 find_instver() {
-	local instver="$(rpm -qi $rootopt --dbpath /var/lib/rpm $pkg | grep -h Version | awk '{print $3}')"
-	local instrel="$(rpm -qi $rootopt --dbpath /var/lib/rpm $pkg | grep -h Release | awk '{print $3}')"
+	local instver="$(rpm -q --qf '%{VERSION}\n' $rootopt --dbpath /var/lib/rpm $1)"
+	local instrel="$(rpm -q --qf '%{RELEASE}\n' $rootopt --dbpath /var/lib/rpm $1)"
 
 	echo "$instver-$instrel"
 }
@@ -754,10 +754,12 @@ npk_upgrade() {
 	msg "Checking for updates"
 	rm -rf /tmp/updates
 
-	for pkg in $(rpm -qa --queryformat='%{NAME}\n' $rootopt --dbpath /var/lib/rpm | sort -n); do
-		vercmp "$(find_instver $(basename $pkg))" "$(find_portver $(basename $pkg))"
-		if [ $? = 255 ]; then
-			echo "$(basename $pkg)" >> /tmp/updates
+	for pkg in $(rpm -qa --queryformat='%{NAME}\n' $rootopt --dbpath /var/lib/rpm | sort -n | uniq); do
+		if [ ! -z "$(find_portdir $pkg)" ]; then
+			vercmp "$(find_instver $pkg)" "$(find_portver $(basename $pkg))"
+			if [ $? = 255 ]; then
+				echo "$(basename $pkg)" >> /tmp/updates
+			fi
 		fi
 	done
 
