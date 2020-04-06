@@ -816,6 +816,7 @@ npk_usage() {
 		"   version	Show version of neko" \
 		"   help		Show usage information" \
 		"   -c <FILE>	Specify configuration file for neko" \
+		"   -m <FILE>	Specify configuration mask for neko" \
 		"   -r <DIR>	Specify directory for installing packages" \
 		"   -f		Do force installation/build/removal" \
 		"" \
