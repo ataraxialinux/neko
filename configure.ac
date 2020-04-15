@@ -1,5 +1,5 @@
 AC_PREREQ([2.64])
-AC_INIT([neko], [0.500], [ataraxialinux@protonmail.com])
+AC_INIT([neko], [0.501], [ataraxialinux@protonmail.com])
 AC_CONFIG_AUX_DIR(aux-dist)
 AM_INIT_AUTOMAKE
 AM_SANITY_CHECK

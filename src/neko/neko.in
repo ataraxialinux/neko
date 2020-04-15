@@ -373,18 +373,18 @@ compile_package() {
 					if [ -d "$PKG/usr/share/locale/$lang" ]; then
 						mv usr/share/locale/$lang "$SRC"/loc
 					fi
-					rm -rf {,usr/}{,local/}share/locale/*
-					mv "$SRC"/loc/* usr/share/locale/
 				done
+					rm -rf {,usr/}{,local/}share/locale/*
+				mv "$SRC"/loc/* usr/share/locale/
 			fi
 			if [ -d "$PKG/usr/lib/locale" ]; then
 				for lang in et et_EE ru ru_RU; do
 					if [ -d "$PKG/usr/lib/locale/$lang" ]; then
 						mv usr/lib/locale/$lang "$SRC"/libloc
 					fi
-					rm -rf {,usr/}{,local/}lib/locale/*
-					mv "$SRC"/libloc/* usr/lib/locale/
 				done
+				rm -rf {,usr/}{,local/}lib/locale/*
+				mv "$SRC"/libloc/* usr/lib/locale/
 			fi
 			if [ -d "$PKG/usr/share/help" ]; then
 				for lang in C et et_EE ru ru_RU; do
