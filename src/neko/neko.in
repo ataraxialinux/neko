@@ -580,6 +580,9 @@ npk_build() {
 				rm -rf "$WORK"
 			fi
 		fi
+		if [ "$noclean" != "yes" ]; then
+			rm -rf "$WORK"
+		fi
 	else
 		warn "Package have already built"
 		return 0
