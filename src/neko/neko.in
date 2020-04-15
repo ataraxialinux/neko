@@ -242,7 +242,7 @@ unpack_source() {
 
 		for FILE in ${source[@]}; do
 			FILENAME="$(basename $FILE)"
-			LOCAL_FILENAME=`get_filename $FILE`
+			LOCAL_FILENAME=`get_filename "$FILE"`
 
 			for NOEXT in ${noextract[@]}; do
 				if [ "$NOEXT" = "$FILENAME" ]; then
@@ -255,13 +255,13 @@ unpack_source() {
 				case $LOCAL_FILENAME in
 					*.tar|*.tar.gz|*.tar.Z|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar.lzma|*.tar.lz|*.tlz|*.tar.lz4|*.tar.zst|*.tar.zstd|*.zip|*.rpm|*.7z)
 						msg "Extracting $FILENAME to the sources directory"
-						bsdtar -p -o -C "$SRC" -xf $LOCAL_FILENAME || die "Failed to extract $FILENAME to the sources directory"
+						bsdtar -p -o -C "$SRC" -xf "$LOCAL_FILENAME" || die "Failed to extract $FILENAME to the sources directory"
 						;;
 					*.git)
 						true ;;
 					*)
 						msg "Copying $FILENAME to the sources directory"
-						cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
+						cp "$LOCAL_FILENAME" "$SRC" || die "Failed to copy $FILENAME to the sources directory"
 						;;
 				esac
 			else
@@ -270,7 +270,7 @@ unpack_source() {
 						true ;;
 					*)
 						msg "Copying $FILENAME to the sources directory"
-						cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
+						cp "$LOCAL_FILENAME" "$SRC" || die "Failed to copy $FILENAME to the sources directory"
 						;;
 				esac
 			fi
@@ -283,9 +283,9 @@ run_strip() {
 	local fs="$1"
 
 	( cd "$fs"
-		find . | xargs file | grep "executable" | grep ELF | cut -f 1 -d : | xargs ${CROSS_COMPILE}strip --strip-all 2>/dev/null
-		find . | xargs file | grep "shared object" | grep ELF | cut -f 1 -d : | xargs ${CROSS_COMPILE}strip --strip-unneeded 2>/dev/null
-		find . | xargs file | grep "current ar archive" | cut -f 1 -d : | xargs ${CROSS_COMPILE}strip --strip-debug 2>/dev/null
+		find . | xargs file | grep "executable" | grep ELF | cut -f 1 -d : | xargs "${CROSS_COMPILE}"strip --strip-all 2>/dev/null
+		find . | xargs file | grep "shared object" | grep ELF | cut -f 1 -d : | xargs "${CROSS_COMPILE}"strip --strip-unneeded 2>/dev/null
+		find . | xargs file | grep "current ar archive" | cut -f 1 -d : | xargs "${CROSS_COMPILE}"strip --strip-debug 2>/dev/null
 	)
 }
 
@@ -428,7 +428,7 @@ create_package() {
 	local RPMPKG="${RPMSOURCEDIR}/RPMS/$BARCH/$name-$version-$release.$BARCH.rpm"
 	local SPECFILE="$WORK/$name.spec"
 
-	mkdir -p "$RPMSOURCEDIR"/{BUILD,RPMS/$BARCH,SOURCES,SPECS,SRPMS}
+	mkdir -p "$RPMSOURCEDIR"/{BUILD,RPMS/"$BARCH",SOURCES,SPECS,SRPMS}
 
 	pushd "$WORK"
 		msg "Generating package"
@@ -499,12 +499,12 @@ create_package() {
 		fi
 
 		if [ -f "$topdir/trigger.dirs" ] && [ -f "$topdir/trigger.commands" ]; then
-			echo "%filetriggerin -- $(cat $topdir/trigger.dirs)" >> "$SPECFILE"
+			echo "%filetriggerin -- $(cat "$topdir"/trigger.dirs)" >> "$SPECFILE"
 			cat "$topdir/trigger.commands"  >> "$SPECFILE"
 			echo  >> "$SPECFILE"
 		fi
 
-		if [ ! -z "$(ls $PKG)" ]; then
+		if [ ! -z "$(ls "$PKG")" ]; then
 			echo '%files' >> "$SPECFILE"
 			echo '%defattr(-,root,root)' >> "$SPECFILE"
 			if [ "$backup" ]; then
@@ -522,7 +522,7 @@ create_package() {
 		fi
 
 		echo '%changelog' >> "$SPECFILE"
-		echo "* $(date "+%a %b %d %Y") $(echo $maintainer | awk '{print $1}') <$(echo $maintainer | awk '{print $2}')>" >> "$SPECFILE"
+		echo "* $(date "+%a %b %d %Y") $(echo "$maintainer" | awk '{print $1}') <$(echo "$maintainer" | awk '{print $2}')>" >> "$SPECFILE"
 		echo "- Initial package" >> "$SPECFILE"
 
 		rpmbuild -bb \
@@ -531,7 +531,7 @@ create_package() {
 			--define "%_pkgverify_level digest" \
 			--define "%_minimize_writes 0" \
 			--define "%_build_id_links none" \
-			--target $BARCH \
+			--target "$BARCH" \
 			--buildroot="$PKG" \
 			--clean \
 			"$SPECFILE"
@@ -619,7 +619,7 @@ npk_install() {
 	[ ! -f "$pkg" ] && die "Your package file was not found or not specified"
 	[ "${pkg##*.}" != "rpm" ] && die "This file does not end in .rpm"
 
-	local localname="$(rpm -qi $pkg | grep -h Name | awk '{print $3}')"
+	local localname="$(rpm -qi "$pkg" | grep -h Name | awk '{print $3}')"
 	[ -z "$localname" ] && die "Your package is broken"
 
 	rpm -K "$pkg" 2>&1 > /dev/null || die "Failed to check package signature"
@@ -630,10 +630,10 @@ npk_install() {
 
 	if [ ! -d "$rootdir/var/lib/rpm" ]; then
 		mkdir -p "$rootdir/var/lib/rpm"
-		rpm $rootopt --dbpath /var/lib/rpm --initdb
+		rpm "$rootopt" --dbpath /var/lib/rpm --initdb
 	fi
 
-	if [ "$(rpm -qa $rootopt --dbpath /var/lib/rpm $localname)" ]; then
+	if [ "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$localname")" ]; then
 		if [ "$needed" = "yes" ]; then
 			warn "$localname: This package has been already installed"
 			return 0
@@ -650,8 +650,8 @@ npk_install() {
 
 	if [ "$force" != "yes" ] && [ "$update" != "true" ]; then
 		msg "Checking for file conflicts"
-		if [ -z "$(rpm -qa $rootopt --dbpath /var/lib/rpm $localname)" ]; then
-			for fileconflicts in $(rpm -qpl $pkg); do
+		if [ -z "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$localname")" ]; then
+			for fileconflicts in $(rpm -qpl "$pkg"); do
 				if [ -f "${rootdir}${fileconflicts}" ] || [ -L "${rootdir}${fileconflicts}" ]; then
 					echo "$fileconflicts" >> /tmp/conflicts
 				fi
@@ -667,7 +667,7 @@ npk_install() {
 
 	if [ "$update" = "true" ]; then
 		local installopt="-Uhv"
-		if [ "$(rpm -qp $pkg)" = "$(rpm -qa $rootopt --dbpath /var/lib/rpm $localname)" ]; then
+		if [ "$(rpm -qp "$pkg")" = "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$localname")" ]; then
 			installopt+=" --replacepkgs"
 		fi
 	else
@@ -676,17 +676,17 @@ npk_install() {
 
 	msg "Extracting package"
 	rpm $installopt \
-		$forceopt \
-		$depopt \
-		$scriptopt \
-		$triggeropt \
-		$bootopt \
-		$rootopt --dbpath /var/lib/rpm \
+		"$forceopt" \
+		"$depopt" \
+		"$scriptopt" \
+		"$triggeropt" \
+		"$bootopt" \
+		"$rootopt" --dbpath /var/lib/rpm \
 		--define "%_binary_payload w19.zstdio" \
 		--define "%_binary_filedigest_algorithm 8" \
 		--define "%_pkgverify_level digest" \
 		--define "%_minimize_writes 0" \
-		$pkg
+		"$pkg"
 
 	if [ $? -ne 0 ]; then
 		trap INT
@@ -703,9 +703,9 @@ npk_remove() {
 
 	[ -z "$pkg" ] && die "Your package was not specified"
 
-	[ -z "$(rpm -qa $rootopt --dbpath /var/lib/rpm $localname)" ] && die "Your package is not installed"
+	[ -z "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$localname")" ] && die "Your package is not installed"
 
-	local localname="$(rpm -qi $rootopt --dbpath /var/lib/rpm $pkg | grep -h Name | awk '{print $3}')"
+	local localname="$(rpm -qi "$rootopt" --dbpath /var/lib/rpm "$pkg" | grep -h Name | awk '{print $3}')"
 	[ -z "$localname" ] && die "Your package is broken"
 
 	msg "Removing package: $localname"
@@ -713,13 +713,13 @@ npk_remove() {
 	trap "" INT
 
 	rpm -ehv \
-		$forceopt \
-		$depopt \
-		$scriptopt \
-		$triggeropt \
-		$rootopt --dbpath /var/lib/rpm \
+		"$forceopt" \
+		"$depopt" \
+		"$scriptopt" \
+		"$triggeropt" \
+		"$rootopt" --dbpath /var/lib/rpm \
 		--define "%_minimize_writes 0" \
-		$pkg
+		"$pkg"
 	if [ $? -ne 0 ]; then
 		trap INT
 		die  "Failed to remove package"
@@ -734,14 +734,14 @@ npk_emerge() {
 	local pkg="$1"
 	local deps
 
-	pushd "$(find_portdir $pkg)"
+	pushd "$(find_portdir "$pkg")"
 		export topdir="$PWD"
 		source_recipe
 
 		if [ "$noconflicts" != "yes" ]; then
 			if [ "$conflicts" ]; then
 				for myconflicts in $conflicts; do
-	  				if [ "$(rpm -qa $rootopt --dbpath /var/lib/rpm $myconflicts)" ]; then
+	  				if [ "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$myconflicts")" ]; then
 						warn "This package conflicts with $myconflicts"
 					fi
 				done
@@ -752,8 +752,8 @@ npk_emerge() {
 			if [ "$depends" ]; then
 				(
 					for mydepends in $depends; do
-	  					if [ -z "$(rpm -qa $rootopt --dbpath /var/lib/rpm $mydepends)" ]; then
-							npk_emerge $mydepends
+	  					if [ -z "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$mydepends")" ]; then
+							npk_emerge "$mydepends"
 						fi
 					done
 				)
@@ -763,7 +763,7 @@ npk_emerge() {
 			fi
 		fi
 
-		port="$(find_portdir $pkg)/KagamiBuild" \
+		port="$(find_portdir "$pkg")/KagamiBuild" \
 			source_recipe
 		npk_build
 		if [ "$PACKAGE" != "no" ]; then
@@ -777,8 +777,8 @@ npk_emerge() {
 			if [ "$weakdeps" ]; then
 				(
 					for mywdepends in $weakdeps; do
-	  					if [ -z "$(rpm -qa $rootopt --dbpath /var/lib/rpm $mywdepends)" ]; then
-							npk_emerge $mywdepends
+	  					if [ -z "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$mywdepends")" ]; then
+							npk_emerge "$mywdepends"
 						fi
 					done
 				)
@@ -799,11 +799,11 @@ npk_upgrade() {
 	msg "Checking for updates"
 	rm -rf /tmp/updates
 
-	for pkg in $(rpm -qa --queryformat='%{NAME}\n' $rootopt --dbpath /var/lib/rpm | sort -n | uniq); do
-		if [ ! -z "$(find_portdir $pkg)" ]; then
-			vercmp "$(find_instver $pkg)" "$(find_portver $(basename $pkg))"
+	for pkg in $(rpm -qa --queryformat='%{NAME}\n' "$rootopt" --dbpath /var/lib/rpm | sort -n | uniq); do
+		if [ ! -z "$(find_portdir "$pkg")" ]; then
+			vercmp "$(find_instver "$pkg")" "$(find_portver $(basename "$pkg"))"
 			if [ $? = 255 ]; then
-				echo "$(basename $pkg)" >> /tmp/updates
+				echo "$(basename "$pkg")" >> /tmp/updates
 			fi
 		fi
 	done
@@ -822,7 +822,7 @@ npk_upgrade() {
 
 	(
 		for updated in $(cat /tmp/updates); do
-			npk_emerge $updated
+			npk_emerge "$updated"
 		done
 	)
 	if [ $? != 0 ]; then
@@ -925,9 +925,9 @@ main() {
 
 	while getopts :fwndestCDEBPSc:m:r: opts; do
 		case $opts in
-			c) config="$(realpath $OPTARG)" ;;
-			m) macros="$(realpath $OPTARG)" ;;
-			r) rootdir="$(realpath $OPTARG)"; rootdir="${rootdir%/}" ;;
+			c) config="$(realpath ${OPTARG})" ;;
+			m) macros="$(realpath ${OPTARG})" ;;
+			r) rootdir="$(realpath ${OPTARG})"; rootdir="${rootdir%/}" ;;
 			f) force="yes" ;;
 			w) bootstrap="yes" ;;
 			n) needed="yes" ;;
@@ -961,7 +961,7 @@ main() {
 		$mode
 	else
 		for pkg in "$@"; do
-			$mode $pkg
+			$mode "$pkg"
 		done
 	fi
 }
