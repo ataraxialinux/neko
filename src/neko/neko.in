@@ -95,6 +95,7 @@ source_recipe() {
 	if [ ! -z "$(npk-parse $myport "# Dep $BARCH:")" ]; then
 		depends="$depends $(npk-parse $myport "# Dep $BARCH:")"
 	fi
+	weakdeps="$(npk-parse $myport "# Weak deps:")"
 	conflicts="$(npk-parse $myport "# Conflicts with:")"
 	provides="$(npk-parse $myport "# Provides:")"
 	obsoletes="$(npk-parse $myport "# obsoletes:")"
@@ -443,6 +444,11 @@ create_package() {
 				echo "Requires: $mydeps" >> "$SPECFILE"
 			done
 		fi
+		if [ -n "$weakdeps" ]; then
+			for myweakdeps in $weakdeps; do
+				echo "Suggests: $myweakdeps" >> "$SPECFILE"
+			done
+		fi
 		echo "AutoReqProv: no" >> "$SPECFILE"
 		echo >> "$SPECFILE"
 
@@ -744,6 +750,21 @@ npk_emerge() {
 				die "Package file wasn't found"
 			fi
 			npk_install
+		fi
+
+		if [ "$nodepends" != "yes" ]; then
+			if [ "$weakdeps" ]; then
+				(
+					for mywdepends in $weakdeps; do
+	  					if [ -z "$(rpm -qa $rootopt --dbpath /var/lib/rpm $mywdepends)" ]; then
+							npk_emerge $mywdepends
+						fi
+					done
+				)
+				if [ $? != 0 ]; then
+					exit 1
+				fi
+			fi
 		fi
 	popd
 }
