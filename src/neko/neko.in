@@ -347,6 +347,8 @@ compile_package() {
 	fi
 
 	pushd "$PKG"
+		mkdir -p "$SRC"/loc "$SRC"/libloc "$SRC"/helploc
+
 		msg "Removing junk from package"
 		rm -rf {,usr/}{,local/}{,share/}info usr{,/local}{,/share},opt/*}/info
 		rm -rf {,usr/}{,local/}lib/charset.alias
@@ -366,22 +368,38 @@ compile_package() {
 
 		if [ "$opt_locales" = "0" ]; then
 			msg "Removing locales"
-			rm -rf {,usr/}{,local/}{,share/,lib/}locale
+			if [ -d "$PKG/usr/share/locale" ]; then
+				for lang in et et_EE ru ru_RU; do
+					if [ -d "$PKG/usr/share/locale/$lang" ]; then
+						mv usr/share/locale/$lang "$SRC"/loc
+					fi
+					rm -rf {,usr/}{,local/}share/locale/*
+					mv "$SRC"/loc/* usr/share/locale/
+				done
+			fi
+			if [ -d "$PKG/usr/lib/locale" ]; then
+				for lang in et et_EE ru ru_RU; do
+					if [ -d "$PKG/usr/lib/locale/$lang" ]; then
+						mv usr/lib/locale/$lang "$SRC"/libloc
+					fi
+					rm -rf {,usr/}{,local/}lib/locale/*
+					mv "$SRC"/libloc/* usr/lib/locale/
+				done
+			fi
+			if [ -d "$PKG/usr/share/help" ]; then
+				for lang in C et et_EE ru ru_RU; do
+					if [ -d "$PKG/usr/share/help/$lang" ]; then
+						mv usr/share/help/$lang "$SRC"/helploc
+					fi
+				done
+				rm -rf usr/share/help/*
+				mv "$SRC"/helploc/* usr/share/help/
+			fi
 		fi
 
 		if [ "$opt_docs" = "0" ]; then
 			msg "Removing documentation"
 			rm -rf {,usr/}{,local/}{,share/}doc usr/{,local/}{,share/}{doc,gtk-doc} opt/*/{doc,gtk-doc}
-		fi
-
-		if [ -d "$PKG/usr/share/help" ]; then
-			pushd usr/share/help
-				mv C "$SRC"/
-
-				rm -rf *
-
-				mv "$SRC"/C .
-			popd
 		fi
 
 		if [ "$opt_strip" != "0" ]; then
