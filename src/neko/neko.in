@@ -154,7 +154,7 @@ parse_options() {
 download_file() {
 	local url="$1"
 
-	if [ ! "`type -p curl`" ]; then
+	if [ ! "$(type -p curl)" ]; then
 		die "curl wasn't found"
 	fi
 
@@ -855,8 +855,10 @@ npk_usage() {
 		"Operations:" \
 		"   build/bi	Compile package from recipe" \
 		"   emerge/em	Compile and install package file" \
+		"   info/if	Show information about install package" \
 		"   install/in	Install binary package (.rpm) file" \
 		"   remove/rm	Remove package from system" \
+		"   search/sr	Search for package" \
 		"   upgrade/up	Perform system upgrade" \
 		"   version	Show version of neko" \
 		"   help		Show usage information" \
@@ -884,6 +886,30 @@ npk_usage() {
 		"BUG TRACKER: https://github.com/ataraxialinux/neko/issues" \
 		""
 	exit 0
+}
+
+npk_search() {
+	local pkg="$1"
+	local portdir="$(find_portdir $pkg)"
+
+	if [ -n "$portdir" ]; then
+		export topdir="$portdir"
+		source_recipe
+
+		echo "Name: $name"
+		echo "Version: $version"
+		echo "Release: $release"
+		echo "Summary: $summary"
+		echo "Section: $section"
+		[ -n "$url" ] && echo "URL: $url"
+		[ -n "$depends" ] && echo "Requires: $depends"
+		[ -n "$conflicts" ] && echo "Conflicts: $conflicts"
+		[ -n "$provides" ] && echo "Provides: $provides"
+		[ -n "$obsoletes" ] && echo "Obsoletes: $obsoletes"
+		[ -n "$weakdeps" ] && echo "Suggests: $weakdeps"
+	else
+		die "$pkg: package not found"
+	fi
 }
 
 main() {
