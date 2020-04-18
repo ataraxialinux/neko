@@ -878,6 +878,11 @@ npk_info() {
 	fi
 }
 
+# yes
+npk_list() {
+	rpm -qa --queryformat='%{NAME}\n' "$rootopt" --dbpath /var/lib/rpm | sort -n | uniq
+}
+
 npk_version() {
 	printf "%s\n" \
 		"neko version $version" \
@@ -901,6 +906,7 @@ npk_usage() {
 		"   emerge/em	Compile and install package file" \
 		"   info/if	Show information about install package" \
 		"   install/in	Install binary package (.rpm) file" \
+		"   list|li	List of all packages" \
 		"   remove/rm	Remove package from system" \
 		"   search/sr	Search for package" \
 		"   upgrade/up	Perform system upgrade" \
@@ -1003,7 +1009,7 @@ main() {
 
 	[ "$bootstrap" = "yes" ] && export USEBOOTSTRAP="yes"
 
-	if [ "$mode" = "npk_upgrade" ] || [ "$mode" = "npk_sync" ] || [ "$mode" = "npk_build" ]; then
+	if [ "$mode" = "npk_upgrade" ] || [ "$mode" = "npk_sync" ] || [ "$mode" = "npk_build" ] || [ "$mode" = "npk_list" ]; then
 		$mode
 	else
 		for pkg in "$@"; do
