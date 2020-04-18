@@ -834,6 +834,50 @@ npk_upgrade() {
 	msg "System was updated successfuly!"
 }
 
+npk_search() {
+	local pkg="$1"
+	local portdir="$(find_portdir $pkg)"
+
+	if [ -n "$portdir" ]; then
+		export topdir="$portdir"
+		source_recipe
+
+		echo "Name: $name"
+		echo "Version: $version"
+		echo "Release: $release"
+		echo "Summary: $summary"
+		echo "Section: $section"
+		[ -n "$url" ] && echo "URL: $url"
+		[ -n "$depends" ] && echo "Requires: $depends"
+		[ -n "$conflicts" ] && echo "Conflicts: $conflicts"
+		[ -n "$provides" ] && echo "Provides: $provides"
+		[ -n "$obsoletes" ] && echo "Obsoletes: $obsoletes"
+		[ -n "$weakdeps" ] && echo "Suggests: $weakdeps"
+	else
+		die "$pkg: package not found"
+	fi
+}
+
+npk_info() {
+	local pkg="$1"
+
+	if [ "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$pkg")" ]; then
+		echo "Name: $(rpm -q --queryformat='%{NAME}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		echo "Version: $(rpm -q --queryformat='%{VERSION}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		echo "Release: $(rpm -q --queryformat='%{RELEASE}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		echo "Summary: $(rpm -q --queryformat='%{SUMMARY}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		echo "Section: $(rpm -q --queryformat='%{GROUP}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		[ -n "$(rpm -q --queryformat='%{URL}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "URL: $(rpm -q --queryformat='%{URL}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		[ -n "$(rpm -q --queryformat='%{REQUIRES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Requires: $(rpm -q --queryformat='%{REQUIRES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		[ -n "$(rpm -q --queryformat='%{CONFLICTS}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Conflicts: $(rpm -q --queryformat='%{CONFLICTS}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		[ -n "$(rpm -q --queryformat='%{PROVIDES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Provides: $(rpm -q --queryformat='%{PROVIDES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		[ -n "$(rpm -q --queryformat='%{OBSOLETES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Obsoletes: $(rpm -q --queryformat='%{OBSOLETES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+		[ -n "$(rpm -q --queryformat='%{SUGGESTS}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Suggests: $(rpm -q --queryformat='%{SUGGESTS}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
+	else
+		die "$pkg: package not installed"
+	fi
+}
+
 npk_version() {
 	printf "%s\n" \
 		"neko version $version" \
@@ -886,30 +930,6 @@ npk_usage() {
 		"BUG TRACKER: https://github.com/ataraxialinux/neko/issues" \
 		""
 	exit 0
-}
-
-npk_search() {
-	local pkg="$1"
-	local portdir="$(find_portdir $pkg)"
-
-	if [ -n "$portdir" ]; then
-		export topdir="$portdir"
-		source_recipe
-
-		echo "Name: $name"
-		echo "Version: $version"
-		echo "Release: $release"
-		echo "Summary: $summary"
-		echo "Section: $section"
-		[ -n "$url" ] && echo "URL: $url"
-		[ -n "$depends" ] && echo "Requires: $depends"
-		[ -n "$conflicts" ] && echo "Conflicts: $conflicts"
-		[ -n "$provides" ] && echo "Provides: $provides"
-		[ -n "$obsoletes" ] && echo "Obsoletes: $obsoletes"
-		[ -n "$weakdeps" ] && echo "Suggests: $weakdeps"
-	else
-		die "$pkg: package not found"
-	fi
 }
 
 main() {
