@@ -368,38 +368,22 @@ compile_package() {
 
 		if [ "$opt_locales" = "0" ]; then
 			msg "Removing locales"
-			if [ -d "$PKG/usr/share/locale" ]; then
-				for lang in et et_EE ru ru_RU; do
-					if [ -d "$PKG/usr/share/locale/$lang" ]; then
-						mv usr/share/locale/$lang "$SRC"/loc
-					fi
-				done
-					rm -rf {,usr/}{,local/}share/locale/*
-				mv "$SRC"/loc/* usr/share/locale/
-			fi
-			if [ -d "$PKG/usr/lib/locale" ]; then
-				for lang in et et_EE ru ru_RU; do
-					if [ -d "$PKG/usr/lib/locale/$lang" ]; then
-						mv usr/lib/locale/$lang "$SRC"/libloc
-					fi
-				done
-				rm -rf {,usr/}{,local/}lib/locale/*
-				mv "$SRC"/libloc/* usr/lib/locale/
-			fi
-			if [ -d "$PKG/usr/share/help" ]; then
-				for lang in C et et_EE ru ru_RU; do
-					if [ -d "$PKG/usr/share/help/$lang" ]; then
-						mv usr/share/help/$lang "$SRC"/helploc
-					fi
-				done
-				rm -rf usr/share/help/*
-				mv "$SRC"/helploc/* usr/share/help/
-			fi
+			rm -rf {,usr/}{,local/}{,share/,lib/}locale
 		fi
 
 		if [ "$opt_docs" = "0" ]; then
 			msg "Removing documentation"
 			rm -rf {,usr/}{,local/}{,share/}doc usr/{,local/}{,share/}{doc,gtk-doc} opt/*/{doc,gtk-doc}
+		fi
+
+		if [ -d "$PKG/usr/share/help" ]; then
+			pushd usr/share/help
+				mv C "$SRC"/
+
+				rm -rf *
+
+				mv "$SRC"/C .
+			popd
 		fi
 
 		if [ "$opt_strip" != "0" ]; then
@@ -708,6 +692,8 @@ npk_remove() {
 	local localname="$(rpm -qi $rootopt --dbpath /var/lib/rpm $pkg | grep -h Name | awk '{print $3}')"
 	[ -z "$localname" ] && die "Your package is broken"
 
+	[ -n "$(grep -w $updated $maskfile)" ] && depopt="--nodeps"
+
 	msg "Removing package: $localname"
 
 	trap "" INT
@@ -822,7 +808,9 @@ npk_upgrade() {
 
 	(
 		for updated in $(cat /tmp/updates); do
-			npk_emerge $updated
+			if [ -z "$(grep -w $updated $maskfile)" ]; then
+				npk_emerge $updated
+			fi
 		done
 	)
 	if [ $? != 0 ]; then
@@ -944,7 +932,7 @@ main() {
 	topdir="$PWD"
 	version="MAINVER"
 	config="/etc/neko/make.conf"
-	macros="/usr/lib/rpm/macros"
+	maskfile="/etc/neko/mask"
 	OPTIONS=('emptydirs' 'strip' 'makeflags' 'locales' 'docs' 'ccache' 'libtool' '~bootstrap' '~embedded')
 
 	force="no"
@@ -978,7 +966,7 @@ main() {
 	while getopts :fwndestCDEBPSc:m:r: opts; do
 		case $opts in
 			c) config="$(realpath $OPTARG)" ;;
-			m) macros="$(realpath $OPTARG)" ;;
+			m) maskfile="$(realpath $OPTARG)" ;;
 			r) rootdir="$(realpath $OPTARG)"; rootdir="${rootdir%/}" ;;
 			f) force="yes" ;;
 			w) bootstrap="yes" ;;
