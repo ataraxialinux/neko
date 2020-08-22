@@ -405,7 +405,6 @@ compile_package() {
 	popd
 }
 
-
 create_package() {
 	local trigdirs trigcommand
 	local RPMSOURCEDIR="$(rpm --eval=%_topdir)"
@@ -775,13 +774,20 @@ npk_emerge() {
 }
 
 upgrade_deps() {
-	unset name version release options backup source noextract depends
-	unset -f build
-
+	local depends myport
 	local portdir="$(find_portdir $1)"
 
 	if [ -d "$portdir" ]; then
-		topdir="$portdir" source_recipe
+		if [ -f "$portdir/KagamiBuild" ]; then
+			myport="$portdir/KagamiBuild"
+		elif [ -f "$portdir/Pkgfile" ]; then
+			myport="$portdir/Pkgfile"
+		fi
+
+		depends="$(npk-parse $myport "# Depends on:")"
+		if [ ! -z "$(npk-parse $myport "# Dep $BARCH:")" ]; then
+			depends="$depends $(npk-parse $myport "# Dep $BARCH:")"
+		fi
 	else
 		break
 	fi
