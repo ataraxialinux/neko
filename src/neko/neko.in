@@ -785,7 +785,7 @@ upgrade_deps() {
 
 	if [ -n "$depends" ]; then
 		for i in $depends; do
-			if  [ -n "$(rpm -qa $rootopt --dbpath /var/lib/rpm $i)" ]
+			if  [ -n "$(rpm -qa $rootopt --dbpath /var/lib/rpm $i)" ]; then
 				vercmp "$(find_instver $i)" "$(find_portver $(basename $i))"
 				if [ $? = 255 ]; then
 					upgrade_deps $i
