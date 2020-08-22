@@ -789,7 +789,7 @@ npk_upgrade_deps() {
 		for i in $depends; do
 			vercmp "$(find_instver $i)" "$(find_portver $(basename $i))"
 			if [ $? = 255 ]; then
-				deps="$(npk_upgrade_deps $u)"
+				deps="$(npk_upgrade_deps $(basename $i))"
 				if [ -n "$deps" ]; then
 					# format
 					if [ -z "$out" ]; then
@@ -826,7 +826,7 @@ npk_upgrade() {
 			vercmp "$(find_instver $pkg)" "$(find_portver $(basename $pkg))"
 			if [ $? = 255 ]; then
 				if [[ $updates != *"$pkg"* ]]; then
-					deps="$(npk_upgrade_deps $pkg)"
+					deps="$(npk_upgrade_deps $(basename $pkg))"
 					if [ -n "$deps" ]; then
 						# format
 						if [ -z "$updates" ]; then
