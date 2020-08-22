@@ -775,6 +775,9 @@ npk_emerge() {
 }
 
 upgrade_deps() {
+	unset name version release options backup source noextract depends
+	unset -f build
+
 	local portdir="$(find_portdir $1)"
 
 	if [ -d "$portdir" ]; then
@@ -799,7 +802,6 @@ upgrade_deps() {
 }
 
 npk_upgrade() {
-	set -x
 	local pkg
 
 	msg "Checking for updates"
