@@ -774,7 +774,7 @@ npk_emerge() {
 }
 
 upgrade_deps() {
-	local depends myport
+	local depends myport i
 	local portdir="$(find_portdir $1)"
 
 	if [ -d "$portdir" ]; then
@@ -826,7 +826,33 @@ npk_upgrade() {
 		fi
 	done
 
-	echo -e "\n$(cat /tmp/update)\n"
+
+	if [ ! -f "/tmp/updates" ]; then
+		warn "No updates were found"
+		rm -rf /tmp/updates
+		return 0
+	fi
+
+	msg "Following packages will be updated"
+	for updated in $(cat /tmp/updates); do
+		printf "[\e[0;32mUP\e[0m] $updated "
+	done
+	echo; echo
+
+	(
+		for updated in $(cat /tmp/updates); do
+			if [ -z "$(cat $maskfile | grep -w $updated)" ]; then
+				npk_emerge $updated
+			fi
+		done
+	)
+	if [ $? != 0 ]; then
+		rm -rf /tmp/updates
+		die "Failed to update your system"
+	fi
+
+	rm -rf /tmp/updates
+	msg "System was updated successfuly!"
 }
 
 npk_search() {
