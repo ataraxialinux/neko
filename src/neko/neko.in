@@ -776,10 +776,14 @@ npk_emerge() {
 
 npk_upgrade_deps() {
 	local pkg="$1"
-	local portdir="$(find_portdir $pkg)"
+	local portdir="$(find_portdir $1)"
 	local out deps
 
-	topdir="$portdir" source_recipe
+	if [ -n "$portdir" ]; then
+		topdir="$portdir" source_recipe
+	else
+		break
+	fi
 
 	if [ -n "$depends" ]; then
 		for i in $depends; do
