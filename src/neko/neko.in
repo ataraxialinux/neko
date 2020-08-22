@@ -777,7 +777,7 @@ npk_emerge() {
 upgrade_deps() {
 	local portdir="$(find_portdir $1)"
 
-	if [ -n "$portdir" ]; then
+	if [ -d "$portdir" ]; then
 		topdir="$portdir" source_recipe
 	else
 		break
@@ -785,17 +785,12 @@ upgrade_deps() {
 
 	if [ -n "$depends" ]; then
 		for i in $depends; do
-			if [ -n "$(find_portdir $i)" ] && [ -n "$(rpm -qa $rootopt --dbpath /var/lib/rpm $i)" ]; then
+			if [ -d "$(find_portdir $i)" ] && [ -n "$(rpm -qa $rootopt --dbpath /var/lib/rpm $i)" ]; then
 				vercmp "$(find_instver $i)" "$(find_portver $(basename $i))"
 				if [ $? = 255 ]; then
 					upgrade_deps $i
-					if [[ $updates != *"$i"* ]]; then
-						# format
-						if [ -z "$updates" ]; then
-							updates="$i"
-						else
-							updates="$updates $i"
-						fi
+					if [ -z "$(grep  -E '(^|\s)'${i}'($|\s)' /tmp/update)" ]; then
+						echo "$i" >> /tmp/update
 					fi
 				fi
 			fi
@@ -804,29 +799,26 @@ upgrade_deps() {
 }
 
 npk_upgrade() {
-	unset updates
-	export updates
+	set -x
 	local pkg
 
 	msg "Checking for updates"
+	rm -rf /tmp/update
+	touch /tmp/update
+
 	for pkg in $(rpm -qa --queryformat='%{NAME}\n' $rootopt --dbpath /var/lib/rpm | sort -n | uniq); do
 		if [ -n "$(find_portdir $pkg)" ]; then
 			vercmp "$(find_instver $pkg)" "$(find_portver $(basename $pkg))"
 			if [ $? = 255 ]; then
 				upgrade_deps $pkg
-				if [[ $updates != *"$pkg"* ]]; then
-					# format
-					if [ -z "$updates" ]; then
-						updates="$pkg"
-					else
-						updates="$updates $pkg"
-					fi
+				if [ -z "$(grep -E '$(^|\s)'${pkg}'($|\s)' /tmp/update)" ]; then
+					echo "$pkg" >> /tmp/update
 				fi
 			fi
 		fi
 	done
 
-	echo -e "\n$updates\n"
+	echo -e "\n$(cat /tmp/update)\n"
 }
 
 npk_search() {
