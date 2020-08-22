@@ -774,10 +774,8 @@ npk_emerge() {
 	popd
 }
 
-npk_upgrade_deps() {
-	local pkg="$1"
+upgrade_deps() {
 	local portdir="$(find_portdir $1)"
-	local out deps
 
 	if [ -n "$portdir" ]; then
 		topdir="$portdir" source_recipe
@@ -787,54 +785,36 @@ npk_upgrade_deps() {
 
 	if [ -n "$depends" ]; then
 		for i in $depends; do
-			vercmp "$(find_instver $i)" "$(find_portver $(basename $i))"
-			if [ $? = 255 ]; then
-				deps="$(npk_upgrade_deps $(basename $i))"
-				if [ -n "$deps" ]; then
-					# format
-					if [ -z "$out" ]; then
-						out="$deps"
-					else
-						out="$out $deps"
-					fi
-				fi
-				if [[ $out != *"$i"* ]]; then
-					# format
-					if [ -z "$out" ]; then
-						out="$i"
-					else
-						out="$out $i"
+			if [ -n "$(find_portdir $i)" ] && [ -n "$(rpm -qa $rootopt --dbpath /var/lib/rpm $i)" ]; then
+				vercmp "$(find_instver $i)" "$(find_portver $(basename $i))"
+				if [ $? = 255 ]; then
+					upgrade_deps $i
+					if [[ $updates != *"$i"* ]]; then
+						# format
+						if [ -z "$updates" ]; then
+							updates="$i"
+						else
+							updates="$updates $i"
+						fi
 					fi
 				fi
 			fi
 		done
-
-		echo "$out"
 	fi
 }
 
 npk_upgrade() {
-	local updates updated deps
-	unset FORCE NEEDED
-
-	FORCE="yes"
-	NEEDED="no"
+	unset updates
+	export updates
+	local pkg
 
 	msg "Checking for updates"
 	for pkg in $(rpm -qa --queryformat='%{NAME}\n' $rootopt --dbpath /var/lib/rpm | sort -n | uniq); do
-		if [ ! -z "$(find_portdir $pkg)" ]; then
+		if [ -n "$(find_portdir $pkg)" ]; then
 			vercmp "$(find_instver $pkg)" "$(find_portver $(basename $pkg))"
 			if [ $? = 255 ]; then
+				upgrade_deps $pkg
 				if [[ $updates != *"$pkg"* ]]; then
-					deps="$(npk_upgrade_deps $(basename $pkg))"
-					if [ -n "$deps" ]; then
-						# format
-						if [ -z "$updates" ]; then
-							updates="$deps"
-						else
-							updates="$updates $deps"
-						fi
-					fi
 					# format
 					if [ -z "$updates" ]; then
 						updates="$pkg"
@@ -846,29 +826,7 @@ npk_upgrade() {
 		fi
 	done
 
-	if [ -z "$updates" ]; then
-		warn "No updates were found"
-		exit 0
-	fi
-
-	msg "Following packages will be updated"
-	for updated in $updates; do
-		printf "[\e[0;32mUP\e[0m] $updated "
-	done
-	echo; echo
-
-	(
-		for updated in $updates; do
-			if [ -z "$(cat $maskfile | grep -w $updated)" ]; then
-				npk_emerge $updated
-			fi
-		done
-	)
-	if [ $? != 0 ]; then
-		die "Failed to update your system"
-	fi
-
-	msg "System has been updated successfuly!"
+	echo -e "\n$updates\n"
 }
 
 npk_search() {
