@@ -800,7 +800,7 @@ npk_upgrade() {
 		fi
 	done
 
-	echo -e "\n$oudated\n"
+	echo -e "\n$outdated\n"
 }
 
 npk_search() {
