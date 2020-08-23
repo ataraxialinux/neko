@@ -837,31 +837,31 @@ npk_upgrade() {
 	done
 
 
-	if [ ! -f "/tmp/updates" ]; then
+	if [ ! -f "/tmp/update" ]; then
 		warn "No updates were found"
-		rm -rf /tmp/updates
+		rm -rf /tmp/update
 		return 0
 	fi
 
 	msg "Following packages will be updated"
-	for updated in $(uniq /tmp/updates); do
+	for updated in $(uniq /tmp/update); do
 		printf "[\e[0;32mUP\e[0m] $updated "
 	done
 	echo; echo
 
 	(
-		for updated in $(uniq /tmp/updates); do
+		for updated in $(uniq /tmp/update); do
 			if [ -z "$(cat $maskfile | grep -w $updated)" ]; then
 				npk_emerge $updated
 			fi
 		done
 	)
 	if [ $? != 0 ]; then
-		rm -rf /tmp/updates
+		rm -rf /tmp/update
 		die "Failed to update your system"
 	fi
 
-	rm -rf /tmp/updates
+	rm -rf /tmp/update
 	msg "System was updated successfuly!"
 }
 
