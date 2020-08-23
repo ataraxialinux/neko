@@ -783,86 +783,24 @@ npk_emerge() {
 	popd
 }
 
-upgrade_deps() {
-	local depends myport i
-	local portdir="$(find_portdir $1)"
-
-	if [ -d "$portdir" ]; then
-		if [ -f "$portdir/KagamiBuild" ]; then
-			myport="$portdir/KagamiBuild"
-		elif [ -f "$portdir/Pkgfile" ]; then
-			myport="$portdir/Pkgfile"
-		fi
-
-		depends="$(npk-parse $myport "# Depends on:")"
-		if [ ! -z "$(npk-parse $myport "# Dep $BARCH:")" ]; then
-			depends="$depends $(npk-parse $myport "# Dep $BARCH:")"
-		fi
-	else
-		break
-	fi
-
-	if [ -n "$depends" ]; then
-		for i in $depends; do
-			if  [ -n "$(rpm -qa $rootopt --dbpath /var/lib/rpm $i)" ]; then
-				vercmp "$(find_instver $i)" "$(find_portver $(basename $i))"
-				if [ $? = 255 ]; then
-					upgrade_deps $i
-					if [ -z "$(grep  -E '(^|\s)'${i}'($|\s)' /tmp/update)" ]; then
-						echo "$i" >> /tmp/update
-					fi
-				fi
-			fi
-		done
-	fi
-}
-
 npk_upgrade() {
-	local pkg
+	local outdated pkg
 
 	msg "Checking for updates"
-	rm -rf /tmp/update
-	touch /tmp/update
-
 	for pkg in $(rpm -qa --queryformat='%{NAME}\n' $rootopt --dbpath /var/lib/rpm | sort -n | uniq); do
 		if [ -n "$(find_portdir $pkg)" ]; then
 			vercmp "$(find_instver $pkg)" "$(find_portver $(basename $pkg))"
 			if [ $? = 255 ]; then
-				upgrade_deps $pkg
-				if [ -z "$(grep -E '$(^|\s)'${pkg}'($|\s)' /tmp/update)" ]; then
-					echo "$pkg" >> /tmp/update
+				if [ -n "$outdated" ]; then
+					outdated="$outdated $pkg"
+				else
+					outdated="$pkg"
 				fi
 			fi
 		fi
 	done
 
-
-	if [ ! -f "/tmp/update" ]; then
-		warn "No updates were found"
-		rm -rf /tmp/update
-		return 0
-	fi
-
-	msg "Following packages will be updated"
-	for updated in $(uniq /tmp/update); do
-		printf "[\e[0;32mUP\e[0m] $updated "
-	done
-	echo; echo
-
-	(
-		for updated in $(uniq /tmp/update); do
-			if [ -z "$(cat $maskfile | grep -w $updated)" ]; then
-				npk_emerge $updated
-			fi
-		done
-	)
-	if [ $? != 0 ]; then
-		rm -rf /tmp/update
-		die "Failed to update your system"
-	fi
-
-	rm -rf /tmp/update
-	msg "System was updated successfuly!"
+	echo -e "\n$oudated\n"
 }
 
 npk_search() {
