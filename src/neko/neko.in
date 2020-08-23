@@ -303,6 +303,8 @@ setup_compiler() {
 }
 
 compile_package() {
+	local FILE DIR TARGET
+
 	if [ "$opt_makeflags" != "0" ]; then
 		export MAKEFLAGS="$MKOPTS"
 		export NINJA_OPTIONS="$MKOPTS"
@@ -392,16 +394,24 @@ compile_package() {
 		fi
 
 		msg "Compressing manual pages"
-		if [ -d "$PKG/usr/share/man" ]; then
-			(
-				cd "$PKG/usr/share/man"
-				find . -type f -exec pigz -9 '{}' +
-				find . -type l | while read -r file; do
-					ln -sf "$(readlink -- "$file").gz" "${file}.gz"
-					rm "$file"
-				done
-			)
-		fi
+		find . -type f -path "*/man/man*/*" | while read FILE; do
+			if [ "$FILE" = "${FILE%%.gz}" ]; then
+				gzip -9 "$FILE"
+			fi
+		done
+
+		find . -type l -path "*/man/man*/*" | while read FILE; do
+			TARGET=`readlink -n "$FILE"`
+			TARGET="${TARGET##*/}"
+			TARGET="${TARGET%%.gz}.gz"
+			rm -f "$FILE"
+			FILE="${FILE%%.gz}.gz"
+			DIR=`dirname "$FILE"`
+
+			if [ -e "$DIR/$TARGET" ]; then
+				ln -sf "$TARGET" "$FILE"
+			fi
+		done
 	popd
 }
 
@@ -834,13 +844,13 @@ npk_upgrade() {
 	fi
 
 	msg "Following packages will be updated"
-	for updated in $(cat /tmp/updates); do
+	for updated in $(uniq /tmp/updates); do
 		printf "[\e[0;32mUP\e[0m] $updated "
 	done
 	echo; echo
 
 	(
-		for updated in $(cat /tmp/updates); do
+		for updated in $(uniq /tmp/updates); do
 			if [ -z "$(cat $maskfile | grep -w $updated)" ]; then
 				npk_emerge $updated
 			fi
@@ -882,21 +892,7 @@ npk_search() {
 npk_info() {
 	local pkg="$1"
 
-	if [ "$(rpm -qa "$rootopt" --dbpath /var/lib/rpm "$pkg")" ]; then
-		echo "Name: $(rpm -q --queryformat='%{NAME}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		echo "Version: $(rpm -q --queryformat='%{VERSION}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		echo "Release: $(rpm -q --queryformat='%{RELEASE}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		echo "Summary: $(rpm -q --queryformat='%{SUMMARY}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		echo "Section: $(rpm -q --queryformat='%{GROUP}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		[ -n "$(rpm -q --queryformat='%{URL}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "URL: $(rpm -q --queryformat='%{URL}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		[ -n "$(rpm -q --queryformat='%{REQUIRES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Requires: $(rpm -q --queryformat='%{REQUIRES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		[ -n "$(rpm -q --queryformat='%{CONFLICTS}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Conflicts: $(rpm -q --queryformat='%{CONFLICTS}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		[ -n "$(rpm -q --queryformat='%{PROVIDES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Provides: $(rpm -q --queryformat='%{PROVIDES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		[ -n "$(rpm -q --queryformat='%{OBSOLETES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Obsoletes: $(rpm -q --queryformat='%{OBSOLETES}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-		[ -n "$(rpm -q --queryformat='%{SUGGESTS}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)" ] && echo "Suggests: $(rpm -q --queryformat='%{SUGGESTS}\n' "$rootopt" --dbpath /var/lib/rpm $pkg)"
-	else
-		die "$pkg: package not installed"
-	fi
+	die "Broken"
 }
 
 # yes
