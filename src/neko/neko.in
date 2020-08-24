@@ -326,6 +326,9 @@ compile_package() {
 			else
 				setup_compiler
 			fi
+			if type sccache > /dev/null 2>&1; then
+				export RUSTC_WRAPPER="$(which sccache)"
+			fi
 		else
 			setup_compiler
 		fi
