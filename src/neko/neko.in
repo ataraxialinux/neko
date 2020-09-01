@@ -494,9 +494,8 @@ create_package() {
 			echo  >> "$SPECFILE"
 		fi
 
-		if [ -f "$topdir/trigger.dirs" ] && [ -f "$topdir/trigger.commands" ]; then
-			echo "%filetriggerin -- $(cat $topdir/trigger.dirs)" >> "$SPECFILE"
-			cat "$topdir/trigger.commands"  >> "$SPECFILE"
+		if [ -f "$topdir/trigger" ]; then
+			cat "$topdir/trigger"  >> "$SPECFILE"
 			echo  >> "$SPECFILE"
 		fi
 
