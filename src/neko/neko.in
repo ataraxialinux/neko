@@ -153,14 +153,20 @@ parse_options() {
 
 download_file() {
 	local url="$1"
+	local archive="$2"
 
 	if [ ! "$(type -p curl)" ]; then
 		die "curl wasn't found"
 	fi
 
-	msg "Downloading $url"
+	if [ -n "$archive" ]; then
+		msg "Downloading $url as $archive"
+		LOCAL_FILENAME=`get_filename $archive`
+	else
+		msg "Downloading $url"
+		LOCAL_FILENAME=`get_filename $FILE`
+	fi
 
-	LOCAL_FILENAME=`get_filename $FILE`
 	LOCAL_FILENAME_PARTIAL="$LOCAL_FILENAME.partial"
 	cmd="-f --retry 3 --retry-delay 3 -L -o $LOCAL_FILENAME_PARTIAL $CURLOPTS"
 	resumecmd="-C -"
@@ -177,7 +183,7 @@ download_file() {
 
 	if [ $error != 0 ]; then
 		while true; do
-			$fullcmd $1
+			$fullcmd $url
 			error=$?
 			if [ $error != 0 ] && [ "$RESUME" = "yes" ]; then
 				warn "Partial download failed, restarting"
@@ -190,30 +196,63 @@ download_file() {
 	fi
 
 	if [ $error != 0 -o ! -f "$LOCAL_FILENAME_PARTIAL" ]; then
-		die "Downloading '${1}' failed."
+		die "Downloading '${url}' failed."
 	fi
 
 	mv -f "$LOCAL_FILENAME_PARTIAL" "$LOCAL_FILENAME"
 }
 
 download_source() {
-	local FILE LOCAL_FILENAME tgt cursum newsum checkresult
+	local FILE LOCAL_FILENAME tgt cursum newsum checkresult url ifile iversion autover
 
 	if [ -n "$source" ]; then
 		for FILE in ${source[@]}; do
 			if echo "$FILE" | grep -q -E '^((git)?:\/\/).+' || echo "$FILE" | grep -q -E '.*\.git$'; then
-				tgt="$(basename $FILE)"
+				if echo $FILE | grep -q '::checkout='; then
+					url="$(echo $FILE | sed -e 's/::checkout=/ /g' | awk '{print $1}')"
+					iversion="$(echo $FILE | sed -e 's/::checkout=/ /g' | awk '{print $2}')"
+					autover="1"
+				else
+					url="$FILE"
+					autover="0"
+				fi
+
+				tgt="$(basename $url)"
+
 				if [ ! -d "$SRC/$tgt" ]; then
-					msg "Clonning $FILE"
-					git clone $GITOPTS $FILE "$SRC/$tgt"
+					msg "Cloning $url"
+					git clone $GITOPTS $url "$SRC/$tgt"
+					if [ $? -ne 0 ]; then
+						die  "Failed to clone: $url"
+					fi
+					if [ "$autover" == "1" ]; then
+						msg "Checking out version to $iversion"
+						pushd "$SRC/$tgt"
+							git checkout tags/${iversion} -b branch
+						popd
+						if [ $? -ne 0 ]; then
+							die  "Failed to check out version for $url"
+						fi
+					fi
 				fi
 			elif echo "$FILE" | grep -q -E '^((https|http|ftp|rtsp|mms)?:\/\/).+'; then
-				LOCAL_FILENAME=`get_filename $FILE`
+				if echo $FILE | grep -q '::archive='; then
+					url="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $1}')"
+					ifile="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $2}')"
+					LOCAL_FILENAME=`get_filename $ifile`
+				else
+					url="$FILE"
+					LOCAL_FILENAME=`get_filename $FILE`
+				fi
 				if [ ! -e $LOCAL_FILENAME ]; then
 					if [ "$LOCAL_FILENAME" = "$FILE" ]; then
 						die "Source file '$LOCAL_FILENAME' not found (can not be downloaded, URL not specified)."
 					else
-						download_file $FILE
+						if [ -n "$ifile" ]; then
+							download_file $url $ifile
+						else
+							download_file $url
+						fi
 					fi
 				fi
 			fi
@@ -222,10 +261,22 @@ download_source() {
 }
 
 unpack_source() {
+	local ifile
+
 	if [ "$source" ]; then
 		for FILE in ${source[@]}; do
-			FILENAME="$(basename $FILE)"
-			LOCAL_FILENAME=`get_filename $FILE`
+			if echo "$FILE" | grep -q -E '^((git)?:\/\/).+' || echo "$FILE" | grep -q -E '.*\.git$'; then
+				return 0
+			fi
+
+			if echo $FILE | grep -q '::archive='; then
+				ifile="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $2}')"
+				FILENAME="$(basename $ifile)"
+				LOCAL_FILENAME=`get_filename $ifile`
+			else
+				FILENAME="$(basename $FILE)"
+				LOCAL_FILENAME=`get_filename $FILE`
+			fi
 
 			if [ "$nosums" != "yes" ] && [ -f "$topdir/.hashsums" ]; then
 				echo -en "\e[34m::\033[0m Checking source integrity for $FILENAME"
@@ -241,8 +292,18 @@ unpack_source() {
 		done
 
 		for FILE in ${source[@]}; do
-			FILENAME="$(basename $FILE)"
-			LOCAL_FILENAME=`get_filename $FILE`
+			if echo "$FILE" | grep -q -E '^((git)?:\/\/).+' || echo "$FILE" | grep -q -E '.*\.git$'; then
+				return 0
+			fi
+
+			if echo $FILE | grep -q '::archive='; then
+				ifile="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $2}')"
+				FILENAME="$(basename $ifile)"
+				LOCAL_FILENAME=`get_filename $ifile`
+			else
+				FILENAME="$(basename $FILE)"
+				LOCAL_FILENAME=`get_filename $FILE`
+			fi
 
 			for NOEXT in ${noextract[@]}; do
 				if [ "$NOEXT" = "$FILENAME" ]; then
@@ -257,8 +318,6 @@ unpack_source() {
 						msg "Extracting $FILENAME to the sources directory"
 						bsdtar -p -o -C "$SRC" -xf $LOCAL_FILENAME || die "Failed to extract $FILENAME to the sources directory"
 						;;
-					*.git)
-						true ;;
 					*)
 						msg "Copying $FILENAME to the sources directory"
 						cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
@@ -266,8 +325,6 @@ unpack_source() {
 				esac
 			else
 				case $LOCAL_FILENAME in
-					*.git)
-						true ;;
 					*)
 						msg "Copying $FILENAME to the sources directory"
 						cp $LOCAL_FILENAME "$SRC" || die "Failed to copy $FILENAME to the sources directory"
