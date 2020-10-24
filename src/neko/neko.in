@@ -33,7 +33,11 @@ get_filename() {
 	local tgt
 
 	if echo "$1" | grep -q -E '^((https|http|ftp|rtsp|mms|file)?:\/\/).+'; then
-		tgt="$(basename $1)"
+		if echo $1 | grep -q '::archive='; then
+			tgt="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $2}')"
+		else
+			tgt="$(basename $1)"
+		fi
 		echo "$SRCDEST/$tgt"
 	else
 		echo "$1"
@@ -153,19 +157,13 @@ parse_options() {
 
 download_file() {
 	local url="$1"
-	local archive="$2"
 
 	if [ ! "$(type -p curl)" ]; then
 		die "curl wasn't found"
 	fi
 
-	if [ -n "$archive" ]; then
-		msg "Downloading $url as $archive"
-		LOCAL_FILENAME=`get_filename $archive`
-	else
-		msg "Downloading $url"
-		LOCAL_FILENAME=`get_filename $FILE`
-	fi
+	msg "Downloading $url"
+	LOCAL_FILENAME=`get_filename $FILE`
 
 	LOCAL_FILENAME_PARTIAL="$LOCAL_FILENAME.partial"
 	cmd="-f --retry 3 --retry-delay 3 -L -o $LOCAL_FILENAME_PARTIAL $CURLOPTS"
@@ -238,8 +236,7 @@ download_source() {
 			elif echo "$FILE" | grep -q -E '^((https|http|ftp|rtsp|mms)?:\/\/).+'; then
 				if echo $FILE | grep -q '::archive='; then
 					url="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $1}')"
-					ifile="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $2}')"
-					LOCAL_FILENAME=`get_filename $ifile`
+					LOCAL_FILENAME=`get_filename $FILE`
 				else
 					url="$FILE"
 					LOCAL_FILENAME=`get_filename $FILE`
@@ -248,11 +245,7 @@ download_source() {
 					if [ "$LOCAL_FILENAME" = "$FILE" ]; then
 						die "Source file '$LOCAL_FILENAME' not found (can not be downloaded, URL not specified)."
 					else
-						if [ -n "$ifile" ]; then
-							download_file $url $ifile
-						else
-							download_file $url
-						fi
+						download_file $url
 					fi
 				fi
 			fi
@@ -272,11 +265,10 @@ unpack_source() {
 			if echo $FILE | grep -q '::archive='; then
 				ifile="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $2}')"
 				FILENAME="$(basename $ifile)"
-				LOCAL_FILENAME=`get_filename $ifile`
 			else
 				FILENAME="$(basename $FILE)"
-				LOCAL_FILENAME=`get_filename $FILE`
 			fi
+			LOCAL_FILENAME=`get_filename $FILE`
 
 			if [ "$nosums" != "yes" ] && [ -f "$topdir/.hashsums" ]; then
 				echo -en "\e[34m::\033[0m Checking source integrity for $FILENAME"
@@ -299,11 +291,10 @@ unpack_source() {
 			if echo $FILE | grep -q '::archive='; then
 				ifile="$(echo $FILE | sed -e 's/::archive=/ /g' | awk '{print $2}')"
 				FILENAME="$(basename $ifile)"
-				LOCAL_FILENAME=`get_filename $ifile`
 			else
 				FILENAME="$(basename $FILE)"
-				LOCAL_FILENAME=`get_filename $FILE`
 			fi
+			LOCAL_FILENAME=`get_filename $FILE`
 
 			for NOEXT in ${noextract[@]}; do
 				if [ "$NOEXT" = "$FILENAME" ]; then
